@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 820" font-family="'Segoe UI','Noto Sans KR',sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1a2744"/>
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#253349"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="redGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#0891B2"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="820" rx="12" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="550" y="38" text-anchor="middle" fill="#F1F5F9" font-size="22" font-weight="700" letter-spacing="2">KWATCH</text>
+  <text x="550" y="58" text-anchor="middle" fill="#94A3B8" font-size="12">웹사이트 관제 시스템 아키텍처</text>
+
+  <!-- ==================== Left: Clients ==================== -->
+  <!-- Dashboard Client -->
+  <rect x="20" y="90" width="185" height="130" rx="10" fill="url(#cardGrad)" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="20" y="90" width="185" height="30" rx="10" fill="url(#blueGrad)"/>
+  <rect x="20" y="105" width="185" height="15" fill="url(#blueGrad)"/>
+  <text x="112" y="110" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">관제실 대시보드</text>
+  <text x="35" y="140" fill="#94A3B8" font-size="10">전광판 / 키오스크 모드</text>
+  <circle cx="35" cy="158" r="4" fill="#00C853"/><text x="44" y="162" fill="#CBD5E1" font-size="10">정상 487</text>
+  <circle cx="110" cy="158" r="4" fill="#FFB300"/><text x="119" y="162" fill="#CBD5E1" font-size="10">경고 8</text>
+  <circle cx="35" cy="178" r="4" fill="#FF1744"/><text x="44" y="182" fill="#CBD5E1" font-size="10">장애 3</text>
+  <circle cx="110" cy="178" r="4" fill="#FF1744"/><text x="119" y="182" fill="#CBD5E1" font-size="10">위변조 2</text>
+  <text x="35" y="206" fill="#64748B" font-size="9">자동 로테이션 │ 이상 우선 표시</text>
+
+  <!-- Admin Client -->
+  <rect x="20" y="240" width="185" height="90" rx="10" fill="url(#cardGrad)" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="20" y="240" width="185" height="30" rx="10" fill="url(#purpleGrad)"/>
+  <rect x="20" y="255" width="185" height="15" fill="url(#purpleGrad)"/>
+  <text x="112" y="260" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">관리자</text>
+  <text x="35" y="290" fill="#94A3B8" font-size="10">웹사이트 CRUD / 카테고리</text>
+  <text x="35" y="306" fill="#94A3B8" font-size="10">베이스라인 관리 / 설정</text>
+  <text x="35" y="322" fill="#94A3B8" font-size="10">CSV 대량 등록</text>
+
+  <!-- ==================== Docker Compose Box ==================== -->
+  <rect x="230" y="75" width="650" height="640" rx="12" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <rect x="240" y="68" width="140" height="18" rx="4" fill="#0F172A"/>
+  <text x="310" y="80" text-anchor="middle" fill="#64748B" font-size="10" font-weight="600">Docker Compose</text>
+
+  <!-- ===== Frontend ===== -->
+  <rect x="250" y="95" width="295" height="75" rx="8" fill="url(#cardGrad)" stroke="#3B82F6" stroke-width="1.2" filter="url(#shadow)"/>
+  <rect x="250" y="95" width="295" height="26" rx="8" fill="url(#blueGrad)"/>
+  <rect x="250" y="110" width="295" height="11" fill="url(#blueGrad)"/>
+  <text x="397" y="113" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Next.js Frontend :3000</text>
+  <text x="265" y="140" fill="#94A3B8" font-size="9.5">Dark Theme 대시보드</text>
+  <text x="265" y="155" fill="#94A3B8" font-size="9.5">스크린샷 그리드 │ 상세 팝업 │ 알림 타임라인</text>
+
+  <!-- ===== Backend ===== -->
+  <rect x="250" y="190" width="615" height="115" rx="8" fill="url(#cardGrad)" stroke="#10B981" stroke-width="1.2" filter="url(#shadow)"/>
+  <rect x="250" y="190" width="615" height="26" rx="8" fill="url(#greenGrad)"/>
+  <rect x="250" y="205" width="615" height="11" fill="url(#greenGrad)"/>
+  <text x="557" y="208" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Express Backend :3001 + Socket.IO</text>
+
+  <!-- API boxes inside backend -->
+  <rect x="265" y="225" width="90" height="36" rx="5" fill="#334155" stroke="#475569" stroke-width="0.8"/>
+  <text x="310" y="240" text-anchor="middle" fill="#E2E8F0" font-size="9" font-weight="500">Auth</text>
+  <text x="310" y="252" text-anchor="middle" fill="#64748B" font-size="8">JWT 인증</text>
+
+  <rect x="365" y="225" width="90" height="36" rx="5" fill="#334155" stroke="#475569" stroke-width="0.8"/>
+  <text x="410" y="240" text-anchor="middle" fill="#E2E8F0" font-size="9" font-weight="500">Website API</text>
+  <text x="410" y="252" text-anchor="middle" fill="#64748B" font-size="8">CRUD / 대량등록</text>
+
+  <rect x="465" y="225" width="90" height="36" rx="5" fill="#334155" stroke="#475569" stroke-width="0.8"/>
+  <text x="510" y="240" text-anchor="middle" fill="#E2E8F0" font-size="9" font-weight="500">Alert API</text>
+  <text x="510" y="252" text-anchor="middle" fill="#64748B" font-size="8">알림 관리</text>
+
+  <rect x="565" y="225" width="110" height="36" rx="5" fill="#334155" stroke="#475569" stroke-width="0.8"/>
+  <text x="620" y="240" text-anchor="middle" fill="#E2E8F0" font-size="9" font-weight="500">Monitoring API</text>
+  <text x="620" y="252" text-anchor="middle" fill="#64748B" font-size="8">상태 / 스크린샷 / 위변조</text>
+
+  <rect x="685" y="225" width="165" height="36" rx="5" fill="#334155" stroke="#475569" stroke-width="0.8"/>
+  <text x="767" y="240" text-anchor="middle" fill="#E2E8F0" font-size="9" font-weight="500">Scheduler (BullMQ)</text>
+  <text x="767" y="252" text-anchor="middle" fill="#64748B" font-size="8">큐 관리 / 작업 스케줄링</text>
+
+  <text x="265" y="292" fill="#64748B" font-size="8">Rate Limiter │ CORS │ Helmet │ WebSocket 실시간 푸시</text>
+
+  <!-- ===== Workers ===== -->
+  <rect x="250" y="325" width="615" height="200" rx="8" fill="url(#cardGrad)" stroke="#F59E0B" stroke-width="1.2" filter="url(#shadow)"/>
+  <rect x="250" y="325" width="615" height="26" rx="8" fill="url(#orangeGrad)"/>
+  <rect x="250" y="340" width="615" height="11" fill="url(#orangeGrad)"/>
+  <text x="557" y="343" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">BullMQ Workers (병렬 처리)</text>
+
+  <!-- Worker 1: Monitoring -->
+  <rect x="265" y="362" width="175" height="90" rx="6" fill="#1a2744" stroke="#3B82F6" stroke-width="1"/>
+  <text x="352" y="380" text-anchor="middle" fill="#60A5FA" font-size="10" font-weight="600">Monitoring Worker</text>
+  <line x1="280" y1="388" x2="425" y2="388" stroke="#334155" stroke-width="0.5"/>
+  <text x="280" y="402" fill="#94A3B8" font-size="9">HTTP HEAD/GET 상태 체크</text>
+  <text x="280" y="416" fill="#94A3B8" font-size="9">응답시간 측정</text>
+  <text x="280" y="430" fill="#94A3B8" font-size="9">4xx → GET fallback</text>
+  <text x="280" y="444" fill="#94A3B8" font-size="9">동시 20개 병렬 처리</text>
+
+  <!-- Worker 2: Screenshot -->
+  <rect x="455" y="362" width="175" height="90" rx="6" fill="#1a2744" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="542" y="380" text-anchor="middle" fill="#A78BFA" font-size="10" font-weight="600">Screenshot Worker</text>
+  <line x1="470" y1="388" x2="615" y2="388" stroke="#334155" stroke-width="0.5"/>
+  <text x="470" y="402" fill="#94A3B8" font-size="9">Playwright 스크린샷</text>
+  <text x="470" y="416" fill="#94A3B8" font-size="9">팝업 자동 제거 (20+ 패턴)</text>
+  <text x="470" y="430" fill="#94A3B8" font-size="9">HTML 캡처 (page.content)</text>
+  <text x="470" y="444" fill="#94A3B8" font-size="9">썸네일 자동 생성</text>
+
+  <!-- Worker 3: Defacement -->
+  <rect x="645" y="362" width="205" height="152" rx="6" fill="#1a2744" stroke="#EF4444" stroke-width="1"/>
+  <text x="747" y="380" text-anchor="middle" fill="#F87171" font-size="10" font-weight="600">Defacement Worker</text>
+  <line x1="660" y1="388" x2="835" y2="388" stroke="#334155" stroke-width="0.5"/>
+  <text x="660" y="403" fill="#CBD5E1" font-size="9" font-weight="500">3계층 하이브리드 탐지</text>
+
+  <!-- Layer badges -->
+  <rect x="660" y="410" width="18" height="14" rx="3" fill="#EF4444"/>
+  <text x="669" y="420" text-anchor="middle" fill="#fff" font-size="7" font-weight="700">L1</text>
+  <text x="683" y="421" fill="#94A3B8" font-size="8.5">외부 도메인 감사 (×0.4)</text>
+
+  <rect x="660" y="428" width="18" height="14" rx="3" fill="#F59E0B"/>
+  <text x="669" y="438" text-anchor="middle" fill="#fff" font-size="7" font-weight="700">L2</text>
+  <text x="683" y="439" fill="#94A3B8" font-size="8.5">HTML 구조 해시 (×0.3)</text>
+
+  <rect x="660" y="446" width="18" height="14" rx="3" fill="#3B82F6"/>
+  <text x="669" y="456" text-anchor="middle" fill="#fff" font-size="7" font-weight="700">L3</text>
+  <text x="683" y="457" fill="#94A3B8" font-size="8.5">픽셀 비교 (×0.3)</text>
+
+  <line x1="660" y1="466" x2="835" y2="466" stroke="#334155" stroke-width="0.5"/>
+  <text x="660" y="479" fill="#64748B" font-size="8">심각도별 차등 알림:</text>
+  <text x="660" y="491" fill="#F87171" font-size="8">CRITICAL 도메인 주입 → 즉시</text>
+  <text x="660" y="503" fill="#FBBF24" font-size="8">WARNING 픽셀 변경 → 3회 연속</text>
+
+  <!-- Screenshot storage -->
+  <rect x="265" y="462" width="365" height="52" rx="6" fill="#1a2744" stroke="#475569" stroke-width="0.8"/>
+  <text x="447" y="480" text-anchor="middle" fill="#94A3B8" font-size="9" font-weight="500">스크린샷 저장소 (Volume Mount)</text>
+  <text x="280" y="502" fill="#64748B" font-size="8.5">📁 current/ &nbsp; 📁 baselines/ &nbsp; 📁 diffs/ &nbsp; 📁 thumbnails/</text>
+
+  <!-- ===== Databases ===== -->
+  <!-- PostgreSQL -->
+  <rect x="265" y="545" width="285" height="100" rx="8" fill="url(#cardGrad)" stroke="#06B6D4" stroke-width="1.2" filter="url(#shadow)"/>
+  <rect x="265" y="545" width="285" height="26" rx="8" fill="url(#cyanGrad)"/>
+  <rect x="265" y="560" width="285" height="11" fill="url(#cyanGrad)"/>
+  <text x="407" y="563" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">PostgreSQL 15</text>
+  <text x="280" y="590" fill="#94A3B8" font-size="9">users │ websites │ categories</text>
+  <text x="280" y="606" fill="#94A3B8" font-size="9">monitoring_results │ screenshots</text>
+  <text x="280" y="622" fill="#94A3B8" font-size="9">defacement_baselines │ defacement_checks</text>
+  <text x="280" y="638" fill="#94A3B8" font-size="9">alerts │ alert_channels</text>
+
+  <!-- Redis -->
+  <rect x="570" y="545" width="295" height="100" rx="8" fill="url(#cardGrad)" stroke="#EF4444" stroke-width="1.2" filter="url(#shadow)"/>
+  <rect x="570" y="545" width="295" height="26" rx="8" fill="url(#redGrad)"/>
+  <rect x="570" y="560" width="295" height="11" fill="url(#redGrad)"/>
+  <text x="717" y="563" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Redis 7</text>
+  <text x="585" y="590" fill="#94A3B8" font-size="9">BullMQ 작업 큐</text>
+  <text x="585" y="606" fill="#94A3B8" font-size="9">  monitoring-queue</text>
+  <text x="585" y="622" fill="#94A3B8" font-size="9">  screenshot-queue</text>
+  <text x="585" y="638" fill="#94A3B8" font-size="9">  defacement-queue</text>
+  <text x="740" y="590" fill="#94A3B8" font-size="9">Rate Limit 캐시</text>
+  <text x="740" y="606" fill="#94A3B8" font-size="9">세션 캐시</text>
+
+  <!-- ===== Connection Arrows ===== -->
+  <!-- Client → Frontend -->
+  <line x1="205" y1="155" x2="248" y2="132" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <text x="218" y="130" fill="#60A5FA" font-size="8">:3000</text>
+
+  <!-- Admin → Backend -->
+  <line x1="205" y1="285" x2="248" y2="250" stroke="#10B981" stroke-width="1.5"/>
+  <text x="218" y="258" fill="#6EE7B7" font-size="8">:3001</text>
+
+  <!-- Frontend → Backend -->
+  <line x1="397" y1="170" x2="397" y2="188" stroke="#64748B" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="405" y="183" fill="#64748B" font-size="7">REST + WS</text>
+
+  <!-- Backend → Workers -->
+  <line x1="557" y1="305" x2="557" y2="323" stroke="#64748B" stroke-width="1" stroke-dasharray="4,2"/>
+
+  <!-- Workers → DB -->
+  <line x1="400" y1="525" x2="400" y2="543" stroke="#64748B" stroke-width="1" stroke-dasharray="4,2"/>
+  <line x1="717" y1="525" x2="717" y2="543" stroke="#64748B" stroke-width="1" stroke-dasharray="4,2"/>
+
+  <!-- ==================== Bottom: Targets ==================== -->
+  <!-- Monitored Websites -->
+  <rect x="250" y="665" width="330" height="65" rx="8" fill="url(#cardGrad)" stroke="#475569" stroke-width="1" filter="url(#shadow)"/>
+  <text x="415" y="688" text-anchor="middle" fill="#E2E8F0" font-size="11" font-weight="600">관제 대상 웹사이트 (~500개)</text>
+  <text x="265" y="706" fill="#64748B" font-size="9">*.go.kr &nbsp;│&nbsp; *.or.kr &nbsp;│&nbsp; *.ac.kr &nbsp;│&nbsp; *.re.kr &nbsp;│&nbsp; ...</text>
+  <text x="265" y="720" fill="#64748B" font-size="9">HTTP/HTTPS 상태 체크 + 스크린샷 + HTML 분석</text>
+
+  <!-- Alert Channels -->
+  <rect x="600" y="665" width="265" height="65" rx="8" fill="url(#cardGrad)" stroke="#475569" stroke-width="1" filter="url(#shadow)"/>
+  <text x="732" y="688" text-anchor="middle" fill="#E2E8F0" font-size="11" font-weight="600">알림 채널</text>
+  <text x="615" y="708" fill="#94A3B8" font-size="10">📧 Email (SMTP)</text>
+  <text x="615" y="724" fill="#94A3B8" font-size="10">💬 Slack &nbsp;&nbsp; 📱 Telegram</text>
+
+  <!-- Arrows to bottom -->
+  <line x1="415" y1="648" x2="415" y2="663" stroke="#475569" stroke-width="1.2" stroke-dasharray="4,2"/>
+  <line x1="732" y1="648" x2="732" y2="663" stroke="#475569" stroke-width="1.2" stroke-dasharray="4,2"/>
+
+  <!-- ==================== Right: Tech Stack ==================== -->
+  <rect x="900" y="90" width="180" height="640" rx="10" fill="url(#cardGrad)" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="900" y="90" width="180" height="28" rx="10" fill="#334155"/>
+  <rect x="900" y="105" width="180" height="13" fill="#334155"/>
+  <text x="990" y="109" text-anchor="middle" fill="#CBD5E1" font-size="11" font-weight="600">기술 스택</text>
+
+  <!-- Tech items -->
+  <rect x="912" y="128" width="156" height="22" rx="4" fill="#1E3A5F"/><text x="990" y="143" text-anchor="middle" fill="#60A5FA" font-size="9">Next.js 14 (App Router)</text>
+  <rect x="912" y="156" width="156" height="22" rx="4" fill="#1E3A5F"/><text x="990" y="171" text-anchor="middle" fill="#60A5FA" font-size="9">Tailwind CSS</text>
+  <rect x="912" y="184" width="156" height="22" rx="4" fill="#1E3A5F"/><text x="990" y="199" text-anchor="middle" fill="#60A5FA" font-size="9">Socket.IO 4 Client</text>
+
+  <rect x="912" y="220" width="156" height="22" rx="4" fill="#14332B"/><text x="990" y="235" text-anchor="middle" fill="#6EE7B7" font-size="9">Express + TypeScript 5</text>
+  <rect x="912" y="248" width="156" height="22" rx="4" fill="#14332B"/><text x="990" y="263" text-anchor="middle" fill="#6EE7B7" font-size="9">Node.js 20+</text>
+  <rect x="912" y="276" width="156" height="22" rx="4" fill="#14332B"/><text x="990" y="291" text-anchor="middle" fill="#6EE7B7" font-size="9">Prisma ORM</text>
+  <rect x="912" y="304" width="156" height="22" rx="4" fill="#14332B"/><text x="990" y="319" text-anchor="middle" fill="#6EE7B7" font-size="9">Socket.IO 4 Server</text>
+
+  <rect x="912" y="340" width="156" height="22" rx="4" fill="#2D1F3D"/><text x="990" y="355" text-anchor="middle" fill="#A78BFA" font-size="9">Playwright (Chromium)</text>
+  <rect x="912" y="368" width="156" height="22" rx="4" fill="#2D1F3D"/><text x="990" y="383" text-anchor="middle" fill="#A78BFA" font-size="9">pixelmatch + pngjs</text>
+  <rect x="912" y="396" width="156" height="22" rx="4" fill="#2D1F3D"/><text x="990" y="411" text-anchor="middle" fill="#A78BFA" font-size="9">sharp (이미지 리사이즈)</text>
+  <rect x="912" y="424" width="156" height="22" rx="4" fill="#2D1F3D"/><text x="990" y="439" text-anchor="middle" fill="#A78BFA" font-size="9">cheerio (HTML 파싱)</text>
+
+  <rect x="912" y="460" width="156" height="22" rx="4" fill="#3D2B1A"/><text x="990" y="475" text-anchor="middle" fill="#FBBF24" font-size="9">BullMQ (작업 큐)</text>
+
+  <rect x="912" y="496" width="156" height="22" rx="4" fill="#1A3038"/><text x="990" y="511" text-anchor="middle" fill="#67E8F9" font-size="9">PostgreSQL 15</text>
+  <rect x="912" y="524" width="156" height="22" rx="4" fill="#3D1A1A"/><text x="990" y="539" text-anchor="middle" fill="#FCA5A5" font-size="9">Redis 7</text>
+
+  <rect x="912" y="560" width="156" height="22" rx="4" fill="#1E293B"/><text x="990" y="575" text-anchor="middle" fill="#94A3B8" font-size="9">Docker Compose</text>
+  <rect x="912" y="588" width="156" height="22" rx="4" fill="#1E293B"/><text x="990" y="603" text-anchor="middle" fill="#94A3B8" font-size="9">Vitest (57 tests)</text>
+
+  <!-- Hybrid formula -->
+  <rect x="912" y="630" width="156" height="90" rx="6" fill="#1a2744" stroke="#F59E0B" stroke-width="0.8"/>
+  <text x="990" y="648" text-anchor="middle" fill="#FBBF24" font-size="9" font-weight="600">하이브리드 점수</text>
+  <line x1="922" y1="655" x2="1058" y2="655" stroke="#334155" stroke-width="0.5"/>
+  <text x="990" y="672" text-anchor="middle" fill="#E2E8F0" font-size="9">pixel × 0.3</text>
+  <text x="990" y="688" text-anchor="middle" fill="#E2E8F0" font-size="9">+ structural × 0.3</text>
+  <text x="990" y="704" text-anchor="middle" fill="#E2E8F0" font-size="9">+ critical × 0.4</text>
+
+  <!-- Version Badge -->
+  <rect x="20" y="780" width="55" height="20" rx="4" fill="url(#greenGrad)"/>
+  <text x="47" y="794" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">v1.0</text>
+  <text x="85" y="794" fill="#64748B" font-size="9">2026-02-13</text>
+</svg>
