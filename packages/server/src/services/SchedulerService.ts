@@ -115,6 +115,7 @@ export class SchedulerService {
         {
           repeat: {
             every: website.checkIntervalSeconds * 1000,
+            immediately: true,
           },
           removeOnComplete: true,
           removeOnFail: false,

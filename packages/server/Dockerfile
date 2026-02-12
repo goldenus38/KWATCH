@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# OpenSSL is needed so prisma generate targets the correct engine binary
+RUN apk add --no-cache openssl
+
 # Install dependencies
 COPY package.json ./
 RUN npm install
@@ -27,7 +30,8 @@ RUN apk add --no-cache \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    openssl
 
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NODE_ENV=production

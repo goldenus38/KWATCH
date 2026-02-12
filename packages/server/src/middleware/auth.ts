@@ -40,7 +40,8 @@ export const authorize = (...roles: string[]) => {
       return;
     }
 
-    if (!roles.includes(req.user.role)) {
+    const userRole = req.user.role.toLowerCase();
+    if (!roles.some(r => r.toLowerCase() === userRole)) {
       sendError(res, 'FORBIDDEN', '접근 권한이 없습니다.', 403);
       return;
     }
