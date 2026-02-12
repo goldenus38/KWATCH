@@ -524,6 +524,10 @@ SCREENSHOT_TIMEOUT=30000
 DEFAULT_CHECK_INTERVAL=300
 DEFAULT_TIMEOUT=30
 DEFACEMENT_THRESHOLD=85
+DEFACEMENT_WEIGHT_PIXEL=0.3
+DEFACEMENT_WEIGHT_STRUCTURAL=0.3
+DEFACEMENT_WEIGHT_CRITICAL=0.4
+HTML_ANALYSIS_ENABLED=true
 
 # Alert Channels (JSON)
 ALERT_EMAIL_SMTP_HOST=
@@ -679,7 +683,7 @@ volumes:
 
 ---
 
-## 현재 구현 상태 (2026-02-12)
+## 현재 구현 상태 (2026-02-13)
 
 ### 완료된 Phase
 
@@ -690,16 +694,47 @@ volumes:
 | Phase 3 | **완료** | HTTP 모니터링 워커, Playwright 스크린샷 워커, pixelmatch 위변조 탐지, BullMQ 스케줄링 |
 | Phase 4 | **완료** | Dark Theme 대시보드, 스크린샷 그리드, Socket.IO 실시간, 키오스크 모드 |
 | Phase 5 | **완료** | 알림(Email/Slack/Telegram), Vitest 통합 테스트(28개), Docker 배포 |
+| Phase 6 | **완료** | 하이브리드 위변조 탐지 (HTML 구조 + 도메인 감사 + 픽셀 비교 3계층), 팝업 자동 제거 |
 
 ### 주요 구현 세부사항
 
 - **모니터링**: HEAD 요청 우선, 4xx 응답 시 GET으로 자동 fallback (한국 공공기관 서버 호환)
 - **스크린샷**: Docker 환경에서 시스템 Chromium 사용 (`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 환경변수)
+- **팝업 자동 제거**: 스크린샷 캡처 전 한국 공공기관 사이트 팝업을 자동 dismiss
+  - JS dialog (`alert`/`confirm`/`prompt`) 자동 dismiss
+  - `window.open` 팝업 차단
+  - 레이어 팝업 자동 닫기 ("오늘 하루 안 보기" 등 20+ 한국어 패턴)
+  - `position: fixed` + 높은 z-index 오버레이 DOM 제거
+  - body 스크롤 잠금 해제
+- **하이브리드 위변조 탐지** (3계층 모델):
+  - Layer 1: **외부 도메인 감사** — `<script>`, `<iframe>`, `<link>` 등의 src에서 새 외부 도메인 탐지
+  - Layer 2: **HTML 구조 핑거프린트** — 태그 트리 SHA-256 해시로 페이지 구조 변경 감지
+  - Layer 3: **픽셀 비교** — 기존 pixelmatch 기반 시각적 변화 감지
+  - 하이브리드 점수: `pixel×0.3 + structural×0.3 + critical×0.4`
+  - 베이스라인에 HTML 데이터 없으면 pixel_only 모드로 자동 fallback
+  - `HTML_ANALYSIS_ENABLED=false`로 킬스위치 가능
+- **심각도별 차등 알림**:
+  - 새 외부 도메인 주입 → CRITICAL, 1회 즉시 알림
+  - 페이지 구조 변경 → CRITICAL, 2회 연속 시 알림
+  - 픽셀만 변경 → WARNING, 3회 연속 시 알림
+- **사이트별 동적 영역 제외**: `ignoreSelectors` (CSS 셀렉터 배열)로 사이트별 동적 영역 설정 가능
 - **스케줄러 연동**: 웹사이트 등록/수정/삭제 시 자동으로 모니터링 스케줄 생성/갱신/제거
 - **Rate Limiter**: 스크린샷 이미지 엔드포인트는 rate limit 제외, API는 15분/1000회
 - **CORP 헤더**: 스크린샷 이미지에 `Cross-Origin-Resource-Policy: cross-origin` 설정 (cross-origin img 로드 허용)
 - **인증 미들웨어**: Role 비교 시 case-insensitive (Prisma enum은 대문자, 코드는 소문자)
-- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock
+- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 57개, HtmlAnalysisService 29개 포함)
+
+### 하이브리드 위변조 탐지 환경변수
+
+```env
+# 하이브리드 점수 가중치 (합계 1.0)
+DEFACEMENT_WEIGHT_PIXEL=0.3
+DEFACEMENT_WEIGHT_STRUCTURAL=0.3
+DEFACEMENT_WEIGHT_CRITICAL=0.4
+
+# HTML 분석 킬스위치 (false로 설정 시 pixel_only 모드)
+HTML_ANALYSIS_ENABLED=true
+```
 
 ### 알려진 이슈
 
@@ -765,7 +800,7 @@ bash scripts/deploy.sh
 
 ```bash
 cd packages/server
-npx vitest run          # 전체 테스트 (28개)
+npx vitest run          # 전체 테스트 (57개)
 npx vitest run --coverage  # 커버리지 포함
 npx tsc --noEmit        # 타입 체크
 ```
