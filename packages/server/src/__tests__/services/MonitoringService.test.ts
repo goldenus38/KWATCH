@@ -55,7 +55,10 @@ describe('MonitoringService', () => {
     });
 
     it('should return not up for 5xx status codes', async () => {
-      vi.spyOn(global, 'fetch').mockResolvedValueOnce({ status: 500 } as any);
+      // HEAD returns 500, GET fallback also returns 500
+      vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({ status: 500 } as any)
+        .mockResolvedValueOnce({ status: 500 } as any);
 
       const result = await service.checkWebsite('https://example.com', 10);
 

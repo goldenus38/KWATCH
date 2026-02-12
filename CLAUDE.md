@@ -705,7 +705,6 @@ volumes:
 
 - `korea.go.kr`: SSL 인증서 불일치(`ERR_TLS_CERT_ALTNAME_INVALID`)로 모니터링/스크린샷 불가 (사이트 자체 문제)
 - Prisma migration 미생성: 현재 `prisma db push`로 스키마 동기화 중. 운영 전 `prisma migrate dev --name init` 필요
-- `docker-compose.yml`의 `version` 속성 경고: Docker Compose V2에서는 불필요하므로 제거 가능
 
 ### 개발 환경 (macOS)
 
@@ -724,6 +723,43 @@ volumes:
 - Docker Engine + Docker Compose V2 직접 설치 (Docker Desktop 불필요)
 - `docker compose up -d`로 4개 컨테이너(db, redis, server, web) 실행
 - server 컨테이너의 `docker-entrypoint.sh`가 Prisma migrate/push 자동 실행
+
+### Git 기반 운영서버 배포
+
+개발PC에서 `git push`만으로 운영서버에 자동 배포할 수 있습니다.
+
+**초기 설정 (운영서버에서 1회):**
+```bash
+# 운영서버에서 setup 스크립트 실행
+sudo bash scripts/setup-git-deploy.sh
+
+# .env 파일 설정
+cp /opt/kwatch/.env.example /opt/kwatch/.env
+vi /opt/kwatch/.env  # DB_PASSWORD, JWT_SECRET 등 실제 값 입력
+```
+
+**개발PC에서 remote 추가:**
+```bash
+git remote add production ssh://사용자@서버IP/opt/kwatch.git
+```
+
+**배포 (개발PC에서):**
+```bash
+git push production master   # master 브랜치 push 시 자동 빌드+배포
+```
+
+**수동 배포 (운영서버에서):**
+```bash
+cd /opt/kwatch
+git pull origin master
+bash scripts/deploy.sh
+```
+
+**동작 원리:**
+1. `git push production master` → bare repo의 `post-receive` hook 실행
+2. hook이 작업 디렉토리(`/opt/kwatch`)를 최신으로 업데이트
+3. `scripts/deploy.sh` 실행: Docker 이미지 빌드 → 컨테이너 재시작 → 헬스체크
+4. `docker-entrypoint.sh`가 Prisma migration 자동 적용
 
 ### 테스트 실행
 
