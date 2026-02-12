@@ -90,6 +90,7 @@ router.get('/image/:id', async (req, res) => {
 
     res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(buffer);
   } catch (error) {
     sendError(res, 'FILE_ERROR', '스크린샷 파일 조회 중 오류가 발생했습니다.', 500);

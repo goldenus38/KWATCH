@@ -35,9 +35,11 @@ export class ScreenshotService {
     if (!this.browser) {
       this.browser = await chromium.launch({
         headless: true,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
         args: [
           '--disable-dev-shm-usage', // Shared memory 사용 비활성화 (메모리 절약)
           '--no-sandbox', // Docker 환경 대응
+          '--disable-gpu',
         ],
       });
       logger.info('Playwright browser initialized');

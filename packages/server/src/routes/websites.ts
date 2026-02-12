@@ -4,6 +4,7 @@ import { authenticate, authorize } from '../middleware/auth';
 import { sendSuccess, sendError, createPaginationMeta } from '../utils/response';
 import { AuthenticatedRequest, WebsiteCreateInput, WebsiteUpdateInput } from '../types';
 import { logger } from '../utils/logger';
+import { schedulerService } from '../services/SchedulerService';
 
 const router = Router();
 
@@ -165,6 +166,12 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
     });
 
     logger.info(`웹사이트 등록 완료: ${newWebsite.id} - ${newWebsite.url}`);
+
+    // 등록 즉시 모니터링 스케줄 시작
+    schedulerService.scheduleMonitoring(newWebsite).catch((err) => {
+      logger.error(`웹사이트 ${newWebsite.id} 스케줄링 실패:`, err);
+    });
+
     sendSuccess(res, newWebsite, 201);
   } catch (error) {
     logger.error('웹사이트 등록 오류:', error);
@@ -290,6 +297,18 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
     });
 
     logger.info(`웹사이트 수정 완료: ${websiteId}`);
+
+    // 스케줄 갱신 (활성 상태 변경 또는 체크 주기 변경 반영)
+    if (updatedWebsite.isActive) {
+      schedulerService.scheduleMonitoring(updatedWebsite).catch((err) => {
+        logger.error(`웹사이트 ${websiteId} 스케줄 갱신 실패:`, err);
+      });
+    } else {
+      schedulerService.removeSchedule(websiteId).catch((err) => {
+        logger.error(`웹사이트 ${websiteId} 스케줄 제거 실패:`, err);
+      });
+    }
+
     sendSuccess(res, updatedWebsite);
   } catch (error) {
     logger.error('웹사이트 수정 오류:', error);
@@ -322,6 +341,9 @@ router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
       sendError(res, 'NOT_FOUND', '웹사이트를 찾을 수 없습니다.', 404);
       return;
     }
+
+    // 스케줄 제거
+    await schedulerService.removeSchedule(websiteId);
 
     // 웹사이트 삭제 (CASCADE로 인해 관련 데이터 자동 삭제)
     await prisma.website.delete({
@@ -459,6 +481,11 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
           ),
         );
         result.successCount = categorizedWebsites.length;
+
+        // 새로 등록된 사이트들 스케줄 시작
+        schedulerService.scheduleAllWebsites().catch((err) => {
+          logger.error('대량 등록 후 스케줄링 실패:', err);
+        });
       } catch (error) {
         logger.error('웹사이트 배치 삽입 오류:', error);
         sendError(res, 'BATCH_ERROR', '웹사이트 일괄 등록 중 오류가 발생했습니다.', 500);

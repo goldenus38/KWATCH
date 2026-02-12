@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15분
-  max: 100,                  // 최대 100회
+  max: 1000,                 // 최대 1000회
   message: {
     success: false,
     error: {

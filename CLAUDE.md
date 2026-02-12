@@ -679,6 +679,74 @@ volumes:
 
 ---
 
+## 현재 구현 상태 (2026-02-12)
+
+### 완료된 Phase
+
+| Phase | 상태 | 내용 |
+|-------|------|------|
+| Phase 1 | **완료** | 프로젝트 세팅, Docker Compose, Prisma ORM, Express 서버, Next.js |
+| Phase 2 | **완료** | JWT 인증, 웹사이트/카테고리 CRUD, CSV 대량 등록 |
+| Phase 3 | **완료** | HTTP 모니터링 워커, Playwright 스크린샷 워커, pixelmatch 위변조 탐지, BullMQ 스케줄링 |
+| Phase 4 | **완료** | Dark Theme 대시보드, 스크린샷 그리드, Socket.IO 실시간, 키오스크 모드 |
+| Phase 5 | **완료** | 알림(Email/Slack/Telegram), Vitest 통합 테스트(28개), Docker 배포 |
+
+### 주요 구현 세부사항
+
+- **모니터링**: HEAD 요청 우선, 4xx 응답 시 GET으로 자동 fallback (한국 공공기관 서버 호환)
+- **스크린샷**: Docker 환경에서 시스템 Chromium 사용 (`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 환경변수)
+- **스케줄러 연동**: 웹사이트 등록/수정/삭제 시 자동으로 모니터링 스케줄 생성/갱신/제거
+- **Rate Limiter**: 스크린샷 이미지 엔드포인트는 rate limit 제외, API는 15분/1000회
+- **CORP 헤더**: 스크린샷 이미지에 `Cross-Origin-Resource-Policy: cross-origin` 설정 (cross-origin img 로드 허용)
+- **인증 미들웨어**: Role 비교 시 case-insensitive (Prisma enum은 대문자, 코드는 소문자)
+- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock
+
+### 알려진 이슈
+
+- `korea.go.kr`: SSL 인증서 불일치(`ERR_TLS_CERT_ALTNAME_INVALID`)로 모니터링/스크린샷 불가 (사이트 자체 문제)
+- Prisma migration 미생성: 현재 `prisma db push`로 스키마 동기화 중. 운영 전 `prisma migrate dev --name init` 필요
+- `docker-compose.yml`의 `version` 속성 경고: Docker Compose V2에서는 불필요하므로 제거 가능
+
+### 개발 환경 (macOS)
+
+- **Docker 런타임**: Colima (Docker Desktop 대체)
+  ```bash
+  colima start               # Docker 데몬 시작
+  colima stop                # Docker 데몬 중지
+  colima status              # 상태 확인
+  docker compose up -d       # 컨테이너 실행
+  docker compose down        # 컨테이너 중지
+  docker compose build       # 이미지 리빌드
+  ```
+
+### 운영 환경 (Rocky Linux 8.10)
+
+- Docker Engine + Docker Compose V2 직접 설치 (Docker Desktop 불필요)
+- `docker compose up -d`로 4개 컨테이너(db, redis, server, web) 실행
+- server 컨테이너의 `docker-entrypoint.sh`가 Prisma migrate/push 자동 실행
+
+### 테스트 실행
+
+```bash
+cd packages/server
+npx vitest run          # 전체 테스트 (28개)
+npx vitest run --coverage  # 커버리지 포함
+npx tsc --noEmit        # 타입 체크
+```
+
+### 관리자 계정 생성 (초기 배포 시)
+
+```bash
+# 컨테이너 내부에서 bcrypt 해시 생성
+HASH=$(docker exec kwatch-server node -e "const bcrypt = require('bcryptjs'); bcrypt.hash('비밀번호', 10).then(h => console.log(h))")
+
+# DB에 직접 삽입
+docker exec kwatch-db psql -U kwatch -d kwatch -c \
+  "INSERT INTO users (username, password_hash, email, role) VALUES ('admin', '$HASH', 'admin@example.com', 'admin');"
+```
+
+---
+
 ## 참고 사항
 
 - 이 프로젝트의 요구사항 정의서는 `docs/웹사이트_관제시스템_요구사항_정의서.docx`에 있습니다.

@@ -2,7 +2,7 @@
 
 import { MonitoringStatus, WebsiteStatus } from '@/types';
 import { formatResponseTime, cn, truncate } from '@/lib/utils';
-import { STATUS_COLORS, RESPONSE_TIME_WARNING_MS } from '@/lib/constants';
+import { STATUS_COLORS, RESPONSE_TIME_WARNING_MS, API_BASE_URL } from '@/lib/constants';
 import { StatusIndicator } from './StatusIndicator';
 
 interface SiteCardProps {
@@ -43,7 +43,7 @@ export function SiteCard({ data, onClick }: SiteCardProps) {
       <div className="relative w-full bg-black aspect-video overflow-hidden">
         {data.screenshotUrl ? (
           <img
-            src={data.screenshotUrl}
+            src={`${API_BASE_URL}${data.screenshotUrl}`}
             alt={data.websiteName}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
             loading="lazy"

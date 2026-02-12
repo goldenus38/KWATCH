@@ -43,7 +43,7 @@ export class MonitoringService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method: 'HEAD',
         signal: controller.signal,
         redirect: 'follow',
@@ -51,6 +51,26 @@ export class MonitoringService {
           'User-Agent': 'KWATCH/1.0 (+http://example.com)',
         },
       });
+
+      // HEAD 요청이 비-2xx면 GET으로 fallback (많은 서버가 HEAD를 차단)
+      if (response.status >= 400) {
+        const fallbackController = new AbortController();
+        const fallbackTimeoutId = setTimeout(
+          () => fallbackController.abort(),
+          timeoutSeconds * 1000,
+        );
+
+        response = await fetch(url, {
+          method: 'GET',
+          signal: fallbackController.signal,
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'KWATCH/1.0 (+http://example.com)',
+          },
+        });
+
+        clearTimeout(fallbackTimeoutId);
+      }
 
       clearTimeout(timeoutId);
 

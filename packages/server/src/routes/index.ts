@@ -13,7 +13,12 @@ import alertsRouter from './alerts';
 const router = Router();
 
 /**
- * 모든 API 라우트에 레이트 리미터 적용
+ * 정적 리소스(이미지)는 rate limit 제외
+ */
+router.use('/screenshots', screenshotsRouter);
+
+/**
+ * 나머지 API 라우트에 레이트 리미터 적용
  */
 router.use(apiLimiter);
 
@@ -24,7 +29,6 @@ router.use('/auth', authRouter);
 router.use('/websites', websitesRouter);
 router.use('/categories', categoriesRouter);
 router.use('/monitoring', monitoringRouter);
-router.use('/screenshots', screenshotsRouter);
 router.use('/defacement', defacementRouter);
 router.use('/alerts', alertsRouter);
 
