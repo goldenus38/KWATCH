@@ -61,6 +61,7 @@ export interface WebsiteCreateInput {
   description?: string;
   checkIntervalSeconds?: number;
   timeoutSeconds?: number;
+  ignoreSelectors?: string[];
 }
 
 export interface WebsiteUpdateInput {
@@ -72,6 +73,7 @@ export interface WebsiteUpdateInput {
   checkIntervalSeconds?: number;
   timeoutSeconds?: number;
   isActive?: boolean;
+  ignoreSelectors?: string[];
 }
 
 export interface WebsiteFilter {
@@ -130,6 +132,7 @@ export interface ScreenshotJobData {
 export interface ScreenshotResult {
   filePath: string;
   fileSize: number;
+  htmlContent?: string;
 }
 
 // ============================================
@@ -138,14 +141,44 @@ export interface ScreenshotResult {
 
 export interface DefacementJobData {
   websiteId: number;
-  screenshotId: bigint;
+  screenshotId: number;
   baselineId: number;
+  htmlContent?: string;
 }
 
 export interface DefacementResult {
   similarityScore: number;
   isDefaced: boolean;
   diffImagePath: string | null;
+}
+
+export interface HtmlAnalysisResult {
+  structuralScore: number;
+  criticalElementsScore: number;
+  structuralHash: string;
+  currentDomains: string[];
+  newDomains: string[];
+  removedDomains: string[];
+  structuralMatch: boolean;
+}
+
+export interface HybridDefacementResult extends DefacementResult {
+  structuralScore: number;
+  criticalElementsScore: number;
+  hybridScore: number;
+  detectionDetails: DetectionDetails;
+  detectionMethod: 'pixel_only' | 'hybrid';
+}
+
+export interface DetectionDetails {
+  pixelScore: number;
+  structuralScore: number;
+  criticalElementsScore: number;
+  hybridScore: number;
+  newDomains: string[];
+  removedDomains: string[];
+  structuralMatch: boolean;
+  weights: { pixel: number; structural: number; critical: number };
 }
 
 // ============================================

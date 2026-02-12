@@ -6,9 +6,8 @@ import sharp from 'sharp';
 import { getDbClient } from '../config/database';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import { DefacementResult } from '../types';
-import { emitDefacementDetected } from '../websocket/socketServer';
-import { alertService } from './AlertService';
+import { DefacementResult, HybridDefacementResult } from '../types';
+import { htmlAnalysisService } from './HtmlAnalysisService';
 
 /**
  * 위변조(Defacement) 탐지 서비스
@@ -26,28 +25,19 @@ export class DefacementService {
   }
 
   /**
-   * 현재 스크린샷을 베이스라인과 비교합니다
+   * 현재 스크린샷을 베이스라인과 비교합니다 (하이브리드 탐지)
    * @param websiteId 웹사이트 ID
    * @param screenshotId 현재 스크린샷 ID
-   * @returns DefacementResult {similarityScore, isDefaced, diffImagePath}
+   * @param htmlContent 현재 페이지의 HTML (선택)
+   * @returns HybridDefacementResult
    */
   async compareWithBaseline(
     websiteId: number,
-    screenshotId: bigint,
-  ): Promise<DefacementResult> {
-    // TODO: 웹사이트의 활성 베이스라인 조회
-    // TODO: 베이스라인 스크린샷 파일 읽기
-    // TODO: 현재 스크린샷 파일 읽기
-    // TODO: 이미지 정규화 (같은 크기로 리사이즈)
-    // TODO: pixelmatch로 픽셀 비교
-    // TODO: 유사도 점수 계산 (0~100%)
-    // TODO: 임계값(기본 85%) 이하 시 위변조 판정
-    // TODO: 위변조 감지 시 diff 이미지 생성
-    // TODO: DefacementCheck 레코드 저장
-    // TODO: 위변조 감지 시 AlertService와 연동
-
+    screenshotId: number | bigint,
+    htmlContent?: string,
+  ): Promise<HybridDefacementResult> {
     try {
-      // TODO: 활성 베이스라인 조회
+      // 활성 베이스라인 조회
       const baseline = await this.prisma.defacementBaseline.findFirst({
         where: {
           websiteId,
@@ -63,7 +53,7 @@ export class DefacementService {
         throw new Error(`No baseline available for website ${websiteId}`);
       }
 
-      // TODO: 현재 스크린샷 조회
+      // 현재 스크린샷 조회
       const currentScreenshot = await this.prisma.screenshot.findUnique({
         where: { id: screenshotId },
       });
@@ -72,64 +62,118 @@ export class DefacementService {
         throw new Error(`Screenshot not found: ${screenshotId}`);
       }
 
-      // TODO: 이미지 파일 읽기
+      // 이미지 파일 읽기 & 픽셀 비교
       const baselineBuffer = await fs.readFile(baseline.screenshot.filePath);
       const currentBuffer = await fs.readFile(currentScreenshot.filePath);
-
-      // TODO: 이미지 정규화 (같은 크기로 리사이즈)
       const normalized = await this.normalizeImages(baselineBuffer, currentBuffer);
 
-      const { similarityScore, diffImagePath } = await this.comparePixels(
+      const { similarityScore: pixelScore, diffImagePath } = await this.comparePixels(
         normalized.baselineBuffer,
         normalized.currentBuffer,
-        0, // width/height now read from PNG metadata inside comparePixels
+        0,
         0,
         websiteId,
       );
 
-      // TODO: 위변조 여부 판정
-      const isDefaced = similarityScore < config.monitoring.defacementThreshold;
+      // HTML 분석 (베이스라인에 HTML 데이터가 있고, htmlContent가 있을 때만)
+      const hasHtmlBaseline = baseline.structuralHash && baseline.domainWhitelist;
+      const canDoHybrid = hasHtmlBaseline && htmlContent && config.monitoring.htmlAnalysisEnabled;
 
-      // TODO: DefacementCheck 레코드 저장
-      const defacementCheck = await this.prisma.defacementCheck.create({
+      let structuralScore = 100;
+      let criticalElementsScore = 100;
+      let hybridScore: number;
+      let detectionMethod: 'pixel_only' | 'hybrid' = 'pixel_only';
+      let newDomains: string[] = [];
+      let removedDomains: string[] = [];
+      let structuralMatch = true;
+
+      if (canDoHybrid) {
+        try {
+          // 사이트별 ignoreSelectors 조회
+          const website = await this.prisma.website.findUnique({
+            where: { id: websiteId },
+            select: { url: true, ignoreSelectors: true },
+          });
+          const ignoreSelectors = (website?.ignoreSelectors as string[] | null) || [];
+
+          const htmlResult = htmlAnalysisService.compareWithBaseline(
+            htmlContent,
+            website?.url || '',
+            {
+              structuralHash: baseline.structuralHash!,
+              domainWhitelist: (baseline.domainWhitelist as string[]) || [],
+            },
+            ignoreSelectors,
+          );
+
+          structuralScore = htmlResult.structuralScore;
+          criticalElementsScore = htmlResult.criticalElementsScore;
+          newDomains = htmlResult.newDomains;
+          removedDomains = htmlResult.removedDomains;
+          structuralMatch = htmlResult.structuralMatch;
+          detectionMethod = 'hybrid';
+        } catch (e) {
+          logger.warn(`HTML analysis failed for website ${websiteId}, falling back to pixel_only:`, e);
+        }
+      }
+
+      // 하이브리드 점수 계산
+      const weights = config.monitoring.hybridWeights;
+      if (detectionMethod === 'hybrid') {
+        hybridScore = pixelScore * weights.pixel + structuralScore * weights.structural + criticalElementsScore * weights.critical;
+      } else {
+        hybridScore = pixelScore;
+      }
+
+      // 위변조 여부 판정
+      const isDefaced = hybridScore < config.monitoring.defacementThreshold;
+
+      const detectionDetails = {
+        pixelScore,
+        structuralScore,
+        criticalElementsScore,
+        hybridScore,
+        newDomains,
+        removedDomains,
+        structuralMatch,
+        weights,
+      };
+
+      // DefacementCheck 레코드 저장
+      await this.prisma.defacementCheck.create({
         data: {
           websiteId,
           baselineId: baseline.id,
           currentScreenshotId: screenshotId,
-          similarityScore,
+          similarityScore: pixelScore,
+          ...(detectionMethod === 'hybrid' && {
+            structuralScore,
+            criticalElementsScore,
+            htmlSimilarityScore: hybridScore,
+            detectionDetails: detectionDetails as any,
+          }),
           isDefaced,
           diffImagePath,
         },
       });
 
       logger.info(
-        `Defacement check completed for website ${websiteId}: ${isDefaced ? 'DEFACED' : 'NORMAL'} (similarity: ${similarityScore.toFixed(2)}%)`,
+        `Defacement check completed for website ${websiteId} [${detectionMethod}]: ` +
+          `${isDefaced ? 'DEFACED' : 'NORMAL'} ` +
+          `(pixel=${pixelScore.toFixed(1)}%` +
+          (detectionMethod === 'hybrid' ? `, structural=${structuralScore}%, critical=${criticalElementsScore}%, hybrid=${hybridScore.toFixed(1)}%` : '') +
+          ')',
       );
 
-      if (isDefaced) {
-        const website = await this.prisma.website.findUnique({
-          where: { id: websiteId },
-        });
-
-        emitDefacementDetected({
-          websiteId,
-          websiteName: website?.name || `Website ${websiteId}`,
-          similarityScore,
-          diffImageUrl: diffImagePath ? `/api/defacement/diff/${defacementCheck.id}` : null,
-        });
-
-        await alertService.createAlert({
-          websiteId,
-          alertType: 'DEFACEMENT',
-          severity: 'CRITICAL',
-          message: `위변조 감지 - 유사도 ${similarityScore.toFixed(2)}% (임계값: ${config.monitoring.defacementThreshold}%)`,
-        });
-      }
-
       return {
-        similarityScore,
+        similarityScore: pixelScore,
         isDefaced,
         diffImagePath,
+        structuralScore,
+        criticalElementsScore,
+        hybridScore,
+        detectionDetails,
+        detectionMethod,
       };
     } catch (error) {
       logger.error(`compareWithBaseline failed for website ${websiteId}:`, error);
@@ -225,7 +269,7 @@ export class DefacementService {
         diffPng.data as unknown as Uint8Array,
         imgWidth,
         imgHeight,
-        { threshold: 0.1, includeAA: false, alpha: 0.1 },
+        { threshold: 0.3, includeAA: false, alpha: 0.1 },
       );
 
       const totalPixels = imgWidth * imgHeight;
@@ -257,16 +301,9 @@ export class DefacementService {
     websiteId: number,
     screenshotId: bigint,
     userId: number,
+    htmlContent?: string,
   ): Promise<void> {
-    // TODO: 스크린샷 존재 여부 확인
-    // TODO: 기존 활성 베이스라인 비활성화 (isActive=false)
-    // TODO: 새 베이스라인 생성
-    // TODO: 베이스라인 디렉토리에 파일 복사 (선택사항)
-    // TODO: DefacementBaseline 레코드 생성 (isActive=true)
-    // TODO: 베이스라인 갱신 로그 기록
-
     try {
-      // TODO: 스크린샷 존재 확인
       const screenshot = await this.prisma.screenshot.findUnique({
         where: { id: screenshotId },
       });
@@ -275,7 +312,7 @@ export class DefacementService {
         throw new Error(`Invalid screenshot: ${screenshotId}`);
       }
 
-      // TODO: 기존 활성 베이스라인 비활성화
+      // 기존 활성 베이스라인 비활성화
       const existingBaseline = await this.prisma.defacementBaseline.findFirst({
         where: { websiteId, isActive: true },
       });
@@ -287,19 +324,44 @@ export class DefacementService {
         });
       }
 
-      // TODO: 새 베이스라인 생성
+      // HTML 베이스라인 데이터 생성 (htmlContent가 있을 때)
+      let htmlBaselineData: { htmlHash: string; structuralHash: string; domainWhitelist: string[] } | null = null;
+      if (htmlContent && config.monitoring.htmlAnalysisEnabled) {
+        try {
+          const website = await this.prisma.website.findUnique({
+            where: { id: websiteId },
+            select: { url: true, ignoreSelectors: true },
+          });
+          const ignoreSelectors = (website?.ignoreSelectors as string[] | null) || [];
+          htmlBaselineData = htmlAnalysisService.createBaselineData(
+            htmlContent,
+            website?.url || '',
+            ignoreSelectors,
+          );
+        } catch (e) {
+          logger.warn(`HTML baseline data extraction failed for website ${websiteId}:`, e);
+        }
+      }
+
+      // 새 베이스라인 생성
       await this.prisma.defacementBaseline.create({
         data: {
           websiteId,
           screenshotId,
           createdBy: userId,
           isActive: true,
-          hash: null, // TODO: 이미지 해시 계산 (선택사항)
+          hash: null,
+          ...(htmlBaselineData && {
+            htmlHash: htmlBaselineData.htmlHash,
+            structuralHash: htmlBaselineData.structuralHash,
+            domainWhitelist: htmlBaselineData.domainWhitelist,
+          }),
         },
       });
 
       logger.info(
-        `Baseline updated for website ${websiteId} by user ${userId}: screenshot ${screenshotId}`,
+        `Baseline updated for website ${websiteId} by user ${userId}: screenshot ${screenshotId}` +
+          (htmlBaselineData ? ` (htmlHash: ${htmlBaselineData.htmlHash.slice(0, 8)}...)` : ''),
       );
     } catch (error) {
       logger.error(

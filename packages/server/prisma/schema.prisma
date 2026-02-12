@@ -59,6 +59,7 @@ model Website {
   checkIntervalSeconds Int      @default(300) @map("check_interval_seconds")
   timeoutSeconds       Int      @default(30) @map("timeout_seconds")
   isActive             Boolean  @default(true) @map("is_active")
+  ignoreSelectors      Json?    @map("ignore_selectors")
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -115,10 +116,13 @@ model DefacementBaseline {
   id           Int      @id @default(autoincrement())
   websiteId    Int      @map("website_id")
   screenshotId BigInt   @map("screenshot_id")
-  hash         String?  @db.VarChar(64)
-  createdBy    Int?     @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  isActive     Boolean  @default(true) @map("is_active")
+  hash             String?  @db.VarChar(64)
+  htmlHash         String?  @map("html_hash") @db.VarChar(64)
+  structuralHash   String?  @map("structural_hash") @db.VarChar(64)
+  domainWhitelist  Json?    @map("domain_whitelist")
+  createdBy        Int?     @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  isActive         Boolean  @default(true) @map("is_active")
 
   // Relations
   website    Website    @relation(fields: [websiteId], references: [id], onDelete: Cascade)
@@ -136,10 +140,14 @@ model DefacementCheck {
   websiteId           Int      @map("website_id")
   baselineId          Int      @map("baseline_id")
   currentScreenshotId BigInt   @map("current_screenshot_id")
-  similarityScore     Decimal? @map("similarity_score") @db.Decimal(5, 2)
-  isDefaced           Boolean  @default(false) @map("is_defaced")
-  diffImagePath       String?  @map("diff_image_path") @db.VarChar(500)
-  checkedAt           DateTime @default(now()) @map("checked_at") @db.Timestamptz
+  similarityScore       Decimal? @map("similarity_score") @db.Decimal(5, 2)
+  structuralScore       Decimal? @map("structural_score") @db.Decimal(5, 2)
+  criticalElementsScore Decimal? @map("critical_elements_score") @db.Decimal(5, 2)
+  htmlSimilarityScore   Decimal? @map("html_similarity_score") @db.Decimal(5, 2)
+  detectionDetails      Json?    @map("detection_details")
+  isDefaced             Boolean  @default(false) @map("is_defaced")
+  diffImagePath         String?  @map("diff_image_path") @db.VarChar(500)
+  checkedAt             DateTime @default(now()) @map("checked_at") @db.Timestamptz
 
   // Relations
   website           Website            @relation(fields: [websiteId], references: [id], onDelete: Cascade)

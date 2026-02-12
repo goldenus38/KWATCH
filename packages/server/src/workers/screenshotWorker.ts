@@ -1,9 +1,11 @@
 import { Worker, Job } from 'bullmq';
 import { getRedisClient } from '../config/redis';
 import { getDbClient } from '../config/database';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 import { screenshotService } from '../services/ScreenshotService';
 import { schedulerService } from '../services/SchedulerService';
+import { htmlAnalysisService } from '../services/HtmlAnalysisService';
 import { ScreenshotJobData } from '../types';
 
 /**
@@ -56,31 +58,83 @@ export async function initScreenshotWorker(): Promise<Worker<ScreenshotJobData>>
         });
 
         if (baseline) {
+          // 위변조 체크 작업 큐에 추가 (Redis rate limit으로 주기 제한)
           try {
-            await schedulerService.enqueueDefacementCheck(
-              job.data.websiteId,
-              screenshotId,
-              baseline.id,
-            );
-            logger.debug(
-              `[ScreenshotWorker] Defacement check job enqueued for website ${job.data.websiteId}`,
-            );
+            const defacementInterval = config.monitoring.defacementInterval;
+            const rateLimitKey = `defacement:ratelimit:${job.data.websiteId}`;
+            const isLimited = await redis.get(rateLimitKey);
+
+            if (!isLimited) {
+              await redis.set(rateLimitKey, '1', 'EX', defacementInterval);
+              await schedulerService.enqueueDefacementCheck(
+                job.data.websiteId,
+                screenshotId,
+                baseline.id,
+                screenshot.htmlContent,
+              );
+              logger.debug(
+                `[ScreenshotWorker] Defacement check job enqueued for website ${job.data.websiteId}`,
+              );
+            }
           } catch (error) {
             logger.warn(
               `[ScreenshotWorker] Failed to enqueue defacement check for website ${job.data.websiteId}:`,
               error,
             );
-            // 위변조 체크 큐 등록 실패는 경고만 하고 계속 진행
           }
         } else {
-          logger.debug(
-            `[ScreenshotWorker] No active baseline for website ${job.data.websiteId}, skipping defacement check`,
-          );
+          // 베이스라인이 없으면 현재 스크린샷을 베이스라인으로 자동 등록
+          try {
+            // HTML 베이스라인 데이터 생성
+            let htmlBaselineData: { htmlHash: string; structuralHash: string; domainWhitelist: string[] } | null = null;
+            if (screenshot.htmlContent && config.monitoring.htmlAnalysisEnabled) {
+              try {
+                const website = await prisma.website.findUnique({
+                  where: { id: job.data.websiteId },
+                  select: { url: true, ignoreSelectors: true },
+                });
+                const ignoreSelectors = (website?.ignoreSelectors as string[] | null) || [];
+                htmlBaselineData = htmlAnalysisService.createBaselineData(
+                  screenshot.htmlContent,
+                  website?.url || job.data.url,
+                  ignoreSelectors,
+                );
+              } catch (e) {
+                logger.warn(
+                  `[ScreenshotWorker] HTML baseline data extraction failed for website ${job.data.websiteId}:`,
+                  e,
+                );
+              }
+            }
+
+            await prisma.defacementBaseline.create({
+              data: {
+                websiteId: job.data.websiteId,
+                screenshotId,
+                isActive: true,
+                hash: null,
+                ...(htmlBaselineData && {
+                  htmlHash: htmlBaselineData.htmlHash,
+                  structuralHash: htmlBaselineData.structuralHash,
+                  domainWhitelist: htmlBaselineData.domainWhitelist,
+                }),
+              },
+            });
+            logger.info(
+              `[ScreenshotWorker] Auto-registered baseline for website ${job.data.websiteId} ` +
+                `(screenshot ${screenshotId}${htmlBaselineData ? ', htmlHash: ' + htmlBaselineData.htmlHash.slice(0, 8) + '...' : ''})`,
+            );
+          } catch (error) {
+            logger.warn(
+              `[ScreenshotWorker] Failed to auto-register baseline for website ${job.data.websiteId}:`,
+              error,
+            );
+          }
         }
 
         return {
           websiteId: job.data.websiteId,
-          screenshotId,
+          screenshotId: Number(screenshotId),
           filePath: screenshot.filePath,
           fileSize: screenshot.fileSize,
           completedAt: new Date(),

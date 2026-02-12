@@ -243,8 +243,9 @@ export class SchedulerService {
    */
   async enqueueDefacementCheck(
     websiteId: number,
-    screenshotId: bigint,
+    screenshotId: number | bigint,
     baselineId: number,
+    htmlContent?: string,
   ): Promise<void> {
     // TODO: 큐가 초기화되었는지 확인
     // TODO: 작업을 큐에 추가
@@ -256,8 +257,9 @@ export class SchedulerService {
 
       const jobData: DefacementJobData = {
         websiteId,
-        screenshotId,
+        screenshotId: Number(screenshotId),
         baselineId,
+        htmlContent,
       };
 
       await this.defacementQueue.add('defacement-check', jobData, {

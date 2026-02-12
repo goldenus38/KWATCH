@@ -32,9 +32,17 @@ export const config = {
 
   // Monitoring
   monitoring: {
-    defaultCheckInterval: parseInt(process.env.DEFAULT_CHECK_INTERVAL || '300', 10),
+    defaultCheckInterval: parseInt(process.env.DEFAULT_CHECK_INTERVAL || '60', 10),
     defaultTimeout: parseInt(process.env.DEFAULT_TIMEOUT || '30', 10),
     defacementThreshold: parseInt(process.env.DEFACEMENT_THRESHOLD || '85', 10),
+    screenshotInterval: parseInt(process.env.SCREENSHOT_INTERVAL || '300', 10), // 스크린샷 캡처 주기 (초, 기본 5분)
+    defacementInterval: parseInt(process.env.DEFACEMENT_INTERVAL || '600', 10), // 위변조 체크 주기 (초, 기본 10분)
+    hybridWeights: {
+      pixel: parseFloat(process.env.DEFACEMENT_WEIGHT_PIXEL || '0.3'),
+      structural: parseFloat(process.env.DEFACEMENT_WEIGHT_STRUCTURAL || '0.3'),
+      critical: parseFloat(process.env.DEFACEMENT_WEIGHT_CRITICAL || '0.4'),
+    },
+    htmlAnalysisEnabled: process.env.HTML_ANALYSIS_ENABLED !== 'false',
   },
 
   // Alert Channels

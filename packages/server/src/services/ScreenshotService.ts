@@ -83,6 +83,9 @@ export class ScreenshotService {
       // TODO: 페이지 로딩 실패 시 에러 처리
       await page.goto(url, { waitUntil: 'networkidle', timeout: config.screenshot.timeout });
 
+      // 페이지 로드 후 추가 대기 (JS 렌더링, 폰트 로딩, 이미지 lazy load 완료 보장)
+      await page.waitForTimeout(3000);
+
       // TODO: 스크린샷 파일명 생성 (형식: {websiteId}_{timestamp}.png)
       const timestamp = Date.now();
       const filename = `${websiteId}_${timestamp}.png`;
@@ -90,6 +93,14 @@ export class ScreenshotService {
 
       // TODO: 스크린샷 캡처 (fullPage: false, 뷰포트만 캡처)
       const buffer = await page.screenshot({ fullPage: false });
+
+      // HTML 콘텐츠 캡처 (추가 비용 0 — 이미 열린 페이지의 DOM 읽기)
+      let htmlContent: string | undefined;
+      try {
+        htmlContent = await page.content();
+      } catch (e) {
+        logger.warn(`HTML capture failed for website ${websiteId}`);
+      }
 
       // TODO: 파일 저장
       await fs.writeFile(filepath, buffer);
@@ -114,6 +125,7 @@ export class ScreenshotService {
       return {
         filePath: filepath,
         fileSize: stats.size,
+        htmlContent,
       };
     } catch (error) {
       logger.error(`captureScreenshot failed for website ${websiteId}:`, error);

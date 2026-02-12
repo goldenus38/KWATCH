@@ -101,6 +101,7 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
       description,
       checkIntervalSeconds,
       timeoutSeconds,
+      ignoreSelectors,
     } = req.body as WebsiteCreateInput;
     const prisma = getDbClient();
 
@@ -148,6 +149,14 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
       }
     }
 
+    // ignoreSelectors 검증
+    if (ignoreSelectors !== undefined) {
+      if (!Array.isArray(ignoreSelectors) || !ignoreSelectors.every((s: unknown) => typeof s === 'string')) {
+        sendError(res, 'INVALID_INPUT', 'ignoreSelectors는 문자열 배열이어야 합니다.', 400);
+        return;
+      }
+    }
+
     // 웹사이트 등록
     const newWebsite = await prisma.website.create({
       data: {
@@ -156,9 +165,10 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
         organizationName: organizationName || null,
         categoryId: categoryId || null,
         description: description || null,
-        checkIntervalSeconds: checkIntervalSeconds || 300,
+        checkIntervalSeconds: checkIntervalSeconds || 60,
         timeoutSeconds: timeoutSeconds || 30,
         isActive: true,
+        ...(ignoreSelectors && { ignoreSelectors }),
       },
       include: {
         category: true,
@@ -278,6 +288,14 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
       }
     }
 
+    // ignoreSelectors 검증
+    if (updates.ignoreSelectors !== undefined) {
+      if (!Array.isArray(updates.ignoreSelectors) || !updates.ignoreSelectors.every((s: unknown) => typeof s === 'string')) {
+        sendError(res, 'INVALID_INPUT', 'ignoreSelectors는 문자열 배열이어야 합니다.', 400);
+        return;
+      }
+    }
+
     // 웹사이트 수정
     const updatedWebsite = await prisma.website.update({
       where: { id: websiteId },
@@ -290,6 +308,7 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
         ...(updates.checkIntervalSeconds && { checkIntervalSeconds: updates.checkIntervalSeconds }),
         ...(updates.timeoutSeconds && { timeoutSeconds: updates.timeoutSeconds }),
         ...(updates.isActive !== undefined && { isActive: updates.isActive }),
+        ...(updates.ignoreSelectors !== undefined && { ignoreSelectors: updates.ignoreSelectors }),
       },
       include: {
         category: true,
@@ -473,7 +492,7 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
                 organizationName: website.organizationName || null,
                 categoryId: website.categoryId || null,
                 description: website.description || null,
-                checkIntervalSeconds: website.checkIntervalSeconds || 300,
+                checkIntervalSeconds: website.checkIntervalSeconds || 60,
                 timeoutSeconds: website.timeoutSeconds || 30,
                 isActive: true,
               },
