@@ -1,0 +1,205 @@
+// KWATCH Database Schema
+// Prisma ORM 스키마 정의
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. 사용자 테이블
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  email        String?  @db.VarChar(255)
+  role         Role     @default(VIEWER)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  acknowledgedAlerts    Alert[]              @relation("AcknowledgedBy")
+  createdBaselines      DefacementBaseline[] @relation("CreatedBy")
+
+  @@map("users")
+}
+
+enum Role {
+  VIEWER  @map("viewer")
+  ANALYST @map("analyst")
+  ADMIN   @map("admin")
+}
+
+// 2. 카테고리 테이블
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  websites Website[]
+
+  @@map("categories")
+}
+
+// 3. 웹사이트 테이블
+model Website {
+  id                   Int      @id @default(autoincrement())
+  url                  String   @unique @db.VarChar(2048)
+  name                 String   @db.VarChar(200)
+  organizationName     String?  @map("organization_name") @db.VarChar(200)
+  categoryId           Int?     @map("category_id")
+  description          String?  @db.Text
+  checkIntervalSeconds Int      @default(300) @map("check_interval_seconds")
+  timeoutSeconds       Int      @default(30) @map("timeout_seconds")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  monitoringResults  MonitoringResult[]
+  screenshots        Screenshot[]
+  defacementBaselines DefacementBaseline[]
+  defacementChecks   DefacementCheck[]
+  alerts             Alert[]
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("websites")
+}
+
+// 4. 모니터링 결과 테이블
+model MonitoringResult {
+  id             BigInt   @id @default(autoincrement())
+  websiteId      Int      @map("website_id")
+  statusCode     Int?     @map("status_code")
+  responseTimeMs Int?     @map("response_time_ms")
+  isUp           Boolean  @map("is_up")
+  errorMessage   String?  @map("error_message") @db.Text
+  checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz
+
+  // Relations
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId, checkedAt(sort: Desc)])
+  @@index([checkedAt(sort: Desc)])
+  @@map("monitoring_results")
+}
+
+// 5. 스크린샷 테이블
+model Screenshot {
+  id         BigInt   @id @default(autoincrement())
+  websiteId  Int      @map("website_id")
+  filePath   String   @map("file_path") @db.VarChar(500)
+  fileSize   Int?     @map("file_size")
+  capturedAt DateTime @default(now()) @map("captured_at") @db.Timestamptz
+
+  // Relations
+  website             Website              @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  defacementBaselines DefacementBaseline[]
+  defacementChecks    DefacementCheck[]
+
+  @@index([websiteId, capturedAt(sort: Desc)])
+  @@map("screenshots")
+}
+
+// 6. 위변조 베이스라인 테이블
+model DefacementBaseline {
+  id           Int      @id @default(autoincrement())
+  websiteId    Int      @map("website_id")
+  screenshotId BigInt   @map("screenshot_id")
+  hash         String?  @db.VarChar(64)
+  createdBy    Int?     @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  isActive     Boolean  @default(true) @map("is_active")
+
+  // Relations
+  website    Website    @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  screenshot Screenshot @relation(fields: [screenshotId], references: [id], onDelete: Cascade)
+  creator    User?      @relation("CreatedBy", fields: [createdBy], references: [id])
+  defacementChecks DefacementCheck[]
+
+  @@index([websiteId])
+  @@map("defacement_baselines")
+}
+
+// 7. 위변조 체크 결과 테이블
+model DefacementCheck {
+  id                  BigInt   @id @default(autoincrement())
+  websiteId           Int      @map("website_id")
+  baselineId          Int      @map("baseline_id")
+  currentScreenshotId BigInt   @map("current_screenshot_id")
+  similarityScore     Decimal? @map("similarity_score") @db.Decimal(5, 2)
+  isDefaced           Boolean  @default(false) @map("is_defaced")
+  diffImagePath       String?  @map("diff_image_path") @db.VarChar(500)
+  checkedAt           DateTime @default(now()) @map("checked_at") @db.Timestamptz
+
+  // Relations
+  website           Website            @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  baseline          DefacementBaseline @relation(fields: [baselineId], references: [id])
+  currentScreenshot Screenshot         @relation(fields: [currentScreenshotId], references: [id])
+
+  @@index([websiteId, checkedAt(sort: Desc)])
+  @@index([isDefaced])
+  @@map("defacement_checks")
+}
+
+// 8. 알림 테이블
+model Alert {
+  id             BigInt     @id @default(autoincrement())
+  websiteId      Int        @map("website_id")
+  alertType      AlertType  @map("alert_type")
+  severity       Severity
+  message        String     @db.Text
+  isAcknowledged Boolean    @default(false) @map("is_acknowledged")
+  acknowledgedBy Int?       @map("acknowledged_by")
+  acknowledgedAt DateTime?  @map("acknowledged_at") @db.Timestamptz
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  website      Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  acknowledger User?   @relation("AcknowledgedBy", fields: [acknowledgedBy], references: [id])
+
+  @@index([websiteId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([severity, createdAt(sort: Desc)])
+  @@map("alerts")
+}
+
+enum AlertType {
+  DOWN        @map("DOWN")
+  SLOW        @map("SLOW")
+  DEFACEMENT  @map("DEFACEMENT")
+  SSL_EXPIRY  @map("SSL_EXPIRY")
+  RECOVERED   @map("RECOVERED")
+}
+
+enum Severity {
+  INFO     @map("INFO")
+  WARNING  @map("WARNING")
+  CRITICAL @map("CRITICAL")
+}
+
+// 9. 알림 채널 설정 테이블
+model AlertChannel {
+  id          Int         @id @default(autoincrement())
+  channelType ChannelType @map("channel_type")
+  config      Json
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("alert_channels")
+}
+
+enum ChannelType {
+  EMAIL    @map("EMAIL")
+  SLACK    @map("SLACK")
+  TELEGRAM @map("TELEGRAM")
+}

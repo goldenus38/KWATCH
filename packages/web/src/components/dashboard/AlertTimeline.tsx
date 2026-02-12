@@ -1,0 +1,142 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { Alert } from '@/types';
+import { formatTime } from '@/lib/utils';
+import { ALERT_TYPE_ICONS, ALERT_TYPE_LABELS } from '@/lib/constants';
+
+interface AlertTimelineProps {
+  alerts: Alert[];
+}
+
+/**
+ * 하단 알림 타임라인
+ * 최근 알림을 수평 스크롤 티커로 표시
+ * 자동 스크롤 및 호버 시 일시정지 기능
+ */
+export function AlertTimeline({ alerts }: AlertTimelineProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const content = contentRef.current;
+    if (!container || !content || alerts.length === 0) return;
+
+    let animationId: number;
+    let isHovered = false;
+    let scrollPosition = 0;
+
+    const animate = () => {
+      if (!isHovered) {
+        scrollPosition += 0.5; // 스크롤 속도
+        container.scrollLeft = scrollPosition;
+
+        // 끝에 도달했을 때 처음으로
+        if (scrollPosition > content.scrollWidth - container.clientWidth) {
+          scrollPosition = 0;
+        }
+      }
+      animationId = requestAnimationFrame(animate);
+    };
+
+    const onMouseEnter = () => {
+      isHovered = true;
+    };
+
+    const onMouseLeave = () => {
+      isHovered = false;
+    };
+
+    animationId = requestAnimationFrame(animate);
+    container.addEventListener('mouseenter', onMouseEnter);
+    container.addEventListener('mouseleave', onMouseLeave);
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      container.removeEventListener('mouseenter', onMouseEnter);
+      container.removeEventListener('mouseleave', onMouseLeave);
+    };
+  }, [alerts.length]);
+
+  // 심각도별 색상
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'CRITICAL':
+        return 'bg-kwatch-status-critical/20 text-kwatch-status-critical';
+      case 'WARNING':
+        return 'bg-kwatch-status-warning/20 text-kwatch-status-warning';
+      default:
+        return 'bg-kwatch-status-checking/20 text-kwatch-status-checking';
+    }
+  };
+
+  return (
+    <div className="bg-kwatch-bg-secondary border-t border-kwatch-bg-tertiary">
+      <div
+        ref={scrollContainerRef}
+        className="overflow-x-auto overflow-y-hidden scroll-smooth"
+        style={{ scrollBehavior: 'auto' }}
+      >
+        <div ref={contentRef} className="flex gap-4 px-6 py-3 whitespace-nowrap">
+          {alerts.length > 0 ? (
+            alerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg ${getSeverityColor(alert.severity)}`}
+              >
+                {/* 시간 */}
+                <span className="text-dashboard-sm font-mono">
+                  {formatTime(alert.createdAt)}
+                </span>
+
+                {/* 아이콘 */}
+                <span className="text-lg">
+                  {ALERT_TYPE_ICONS[alert.alertType]}
+                </span>
+
+                {/* 웹사이트명 */}
+                <span className="text-dashboard-sm font-semibold">
+                  {alert.websiteName || '알 수 없음'}
+                </span>
+
+                {/* 메시지 */}
+                <span className="text-dashboard-sm text-kwatch-text-secondary">
+                  {ALERT_TYPE_LABELS[alert.alertType]}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center justify-center w-full py-2 text-kwatch-text-muted">
+              <span className="text-dashboard-sm">
+                아직 알림이 없습니다
+              </span>
+            </div>
+          )}
+
+          {/* 반복용 복사본 (무한 스크롤 효과) */}
+          {alerts.length > 3 &&
+            alerts.map((alert) => (
+              <div
+                key={`repeat-${alert.id}`}
+                className={`flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg ${getSeverityColor(alert.severity)}`}
+              >
+                <span className="text-dashboard-sm font-mono">
+                  {formatTime(alert.createdAt)}
+                </span>
+                <span className="text-lg">
+                  {ALERT_TYPE_ICONS[alert.alertType]}
+                </span>
+                <span className="text-dashboard-sm font-semibold">
+                  {alert.websiteName || '알 수 없음'}
+                </span>
+                <span className="text-dashboard-sm text-kwatch-text-secondary">
+                  {ALERT_TYPE_LABELS[alert.alertType]}
+                </span>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}

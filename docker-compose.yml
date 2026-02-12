@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: kwatch-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kwatch
+      POSTGRES_USER: kwatch
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kwatch']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: kwatch-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./packages/server
+      dockerfile: Dockerfile
+    container_name: kwatch-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://kwatch:${DB_PASSWORD:-password}@db:5432/kwatch
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+    volumes:
+      - screenshots:/app/screenshots
+    ports:
+      - '3001:3001'
+
+  web:
+    build:
+      context: ./packages/web
+      dockerfile: Dockerfile
+    container_name: kwatch-web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://server:3001
+      NEXT_PUBLIC_WS_URL: ws://server:3001
+
+volumes:
+  pgdata:
+  redisdata:
+  screenshots:

@@ -1,0 +1,297 @@
+import path from 'path';
+import fs from 'fs/promises';
+import { chromium, Browser, Page } from 'playwright';
+import sharp from 'sharp';
+import { getDbClient } from '../config/database';
+import { config } from '../config';
+import { logger } from '../utils/logger';
+import { ScreenshotResult } from '../types';
+
+/**
+ * Playwright를 이용한 웹사이트 스크린샷 캡처 서비스
+ * 1920x1080 해상도로 메인페이지 스크린샷을 캡처하고 썸네일을 생성합니다.
+ */
+export class ScreenshotService {
+  private prisma = getDbClient();
+  private browser: Browser | null = null;
+  private readonly screenshotDir = config.screenshot.dir;
+  private readonly currentDir = path.join(this.screenshotDir, 'current');
+  private readonly thumbnailDir = path.join(this.screenshotDir, 'thumbnails');
+  private readonly baselineDir = path.join(this.screenshotDir, 'baselines');
+
+  constructor() {
+    // TODO: 스크린샷 디렉토리 초기화
+  }
+
+  /**
+   * Playwright 브라우저 인스턴스를 초기화합니다 (lazy initialization)
+   */
+  private async initBrowser(): Promise<Browser> {
+    // TODO: 이미 초기화되었으면 기존 브라우저 반환
+    // TODO: Chromium 브라우저 실행
+    // TODO: 메모리 누수 방지를 위한 이벤트 리스너 설정
+    // TODO: 연결 끊김 시 자동 재연결 로직 구현
+
+    if (!this.browser) {
+      this.browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--disable-dev-shm-usage', // Shared memory 사용 비활성화 (메모리 절약)
+          '--no-sandbox', // Docker 환경 대응
+        ],
+      });
+      logger.info('Playwright browser initialized');
+    }
+
+    return this.browser;
+  }
+
+  /**
+   * 단일 웹사이트의 스크린샷을 캡처합니다
+   * @param websiteId 웹사이트 ID
+   * @param url 웹사이트 URL
+   * @returns ScreenshotResult {filePath, fileSize}
+   */
+  async captureScreenshot(websiteId: number, url: string): Promise<ScreenshotResult> {
+    // TODO: URL 유효성 검증
+    // TODO: 디렉토리 존재 확인 및 생성
+    let browser: Browser | null = null;
+    let page: Page | null = null;
+
+    try {
+      // TODO: 타임아웃 설정 (30초 기본)
+      browser = await this.initBrowser();
+
+      // TODO: 스크린샷 디렉토리 생성
+      await fs.mkdir(this.currentDir, { recursive: true });
+
+      // TODO: 새 페이지 컨텍스트 생성
+      page = await browser.newPage();
+
+      // TODO: 뷰포트 설정 (1920x1080)
+      await page.setViewportSize({
+        width: config.screenshot.viewportWidth,
+        height: config.screenshot.viewportHeight,
+      });
+
+      // TODO: 타임아웃 설정
+      page.setDefaultTimeout(config.screenshot.timeout);
+
+      // TODO: URL로 네비게이션 (waitUntil: 'networkidle' 권장)
+      // TODO: 페이지 로딩 실패 시 에러 처리
+      await page.goto(url, { waitUntil: 'networkidle', timeout: config.screenshot.timeout });
+
+      // TODO: 스크린샷 파일명 생성 (형식: {websiteId}_{timestamp}.png)
+      const timestamp = Date.now();
+      const filename = `${websiteId}_${timestamp}.png`;
+      const filepath = path.join(this.currentDir, filename);
+
+      // TODO: 스크린샷 캡처 (fullPage: false, 뷰포트만 캡처)
+      const buffer = await page.screenshot({ fullPage: false });
+
+      // TODO: 파일 저장
+      await fs.writeFile(filepath, buffer);
+
+      // TODO: 파일 크기 조회
+      const stats = await fs.stat(filepath);
+
+      // TODO: 썸네일 생성 (200x112, 16:9 비율)
+      await this.generateThumbnail(filepath, websiteId, timestamp);
+
+      // TODO: 데이터베이스에 Screenshot 레코드 저장
+      const dbRecord = await this.prisma.screenshot.create({
+        data: {
+          websiteId,
+          filePath: filepath,
+          fileSize: stats.size,
+        },
+      });
+
+      logger.info(`Screenshot captured for website ${websiteId}: ${filepath}`);
+
+      return {
+        filePath: filepath,
+        fileSize: stats.size,
+      };
+    } catch (error) {
+      logger.error(`captureScreenshot failed for website ${websiteId}:`, error);
+      throw error;
+    } finally {
+      // TODO: 페이지 닫기 (메모리 누수 방지)
+      if (page) {
+        await page.close();
+      }
+      // TODO: 브라우저는 유지 (여러 웹사이트 체크에 재사용)
+    }
+  }
+
+  /**
+   * 스크린샷에서 썸네일을 생성합니다 (200x112, 16:9 비율)
+   * @param imagePath 원본 이미지 경로
+   * @param websiteId 웹사이트 ID
+   * @param timestamp 타임스탬프
+   */
+  private async generateThumbnail(imagePath: string, websiteId: number, timestamp: number): Promise<void> {
+    // TODO: 썸네일 디렉토리 생성
+    // TODO: sharp를 이용한 이미지 리사이징 (200x112)
+    // TODO: 썸네일 파일명: {websiteId}_{timestamp}_thumb.png
+    // TODO: 썸네일 저장
+
+    try {
+      await fs.mkdir(this.thumbnailDir, { recursive: true });
+
+      const thumbFilename = `${websiteId}_${timestamp}_thumb.png`;
+      const thumbPath = path.join(this.thumbnailDir, thumbFilename);
+
+      await sharp(imagePath)
+        .resize(400, 225, { fit: 'cover', position: 'center' })
+        .png()
+        .toFile(thumbPath);
+
+      logger.debug(`Thumbnail generated for website ${websiteId}: ${thumbPath}`);
+    } catch (error) {
+      logger.warn(`Thumbnail generation failed for website ${websiteId}:`, error);
+      // 썸네일 생성 실패는 경고만 하고 진행
+    }
+  }
+
+  /**
+   * 특정 웹사이트의 최신 스크린샷을 조회합니다
+   * @param websiteId 웹사이트 ID
+   * @returns 스크린샷 정보
+   */
+  async getLatestScreenshot(websiteId: number): Promise<any | null> {
+    // TODO: 가장 최신 Screenshot 레코드 조회
+    // TODO: 파일이 존재하는지 확인
+    // TODO: 존재하면 스크린샷 정보 반환, 없으면 null 반환
+
+    try {
+      const screenshot = await this.prisma.screenshot.findFirst({
+        where: { websiteId },
+        orderBy: { capturedAt: 'desc' },
+      });
+
+      if (!screenshot) {
+        return null;
+      }
+
+      // TODO: 파일 존재 확인
+      const fileExists = await fs
+        .access(screenshot.filePath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (!fileExists) {
+        logger.warn(`Screenshot file not found: ${screenshot.filePath}`);
+        return null;
+      }
+
+      return screenshot;
+    } catch (error) {
+      logger.error(`getLatestScreenshot failed for website ${websiteId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 오래된 스크린샷을 정리합니다 (기본 7일 이상 된 스크린샷)
+   * @param daysToKeep 보관할 일 수
+   * @returns 삭제된 스크린샷 수
+   */
+  async cleanupOldScreenshots(daysToKeep: number = 7): Promise<number> {
+    // TODO: daysToKeep 이전의 모든 스크린샷 조회
+    // TODO: 각 스크린샷 파일 삭제
+    // TODO: 각 썸네일 파일 삭제
+    // TODO: 데이터베이스 레코드 삭제 (cascade 설정 확인)
+    // TODO: 삭제된 스크린샷 수 반환
+    // TODO: 베이스라인 스크린샷은 삭제하지 않기
+
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+      // TODO: 베이스라인에 사용되지 않는 오래된 스크린샷만 조회
+      const oldScreenshots = await this.prisma.screenshot.findMany({
+        where: {
+          capturedAt: { lt: cutoffDate },
+          defacementBaselines: {
+            none: {},
+          },
+        },
+      });
+
+      let deletedCount = 0;
+
+      // TODO: 각 스크린샷 파일 및 썸네일 삭제
+      for (const screenshot of oldScreenshots) {
+        try {
+          await fs.unlink(screenshot.filePath);
+          const thumbFilename = path.basename(screenshot.filePath).replace('.png', '_thumb.png');
+          const thumbPath = path.join(this.thumbnailDir, thumbFilename);
+          await fs.unlink(thumbPath).catch(() => {}); // 썸네일이 없을 수도 있음
+          deletedCount++;
+        } catch (error) {
+          logger.warn(`Failed to delete screenshot file: ${screenshot.filePath}`, error);
+        }
+      }
+
+      // TODO: 데이터베이스 레코드 삭제
+      if (deletedCount > 0) {
+        await this.prisma.screenshot.deleteMany({
+          where: {
+            id: { in: oldScreenshots.map((s) => s.id) },
+          },
+        });
+      }
+
+      logger.info(`Cleaned up ${deletedCount} old screenshots`);
+      return deletedCount;
+    } catch (error) {
+      logger.error('cleanupOldScreenshots failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 브라우저를 종료합니다
+   */
+  async closeBrowser(): Promise<void> {
+    // TODO: 브라우저가 열려있으면 종료
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      logger.info('Playwright browser closed');
+    }
+  }
+
+  /**
+   * 스크린샷 파일을 읽어 Buffer로 반환합니다
+   * @param screenshotId 스크린샷 ID
+   * @returns 이미지 Buffer
+   */
+  async getScreenshotBuffer(screenshotId: bigint): Promise<Buffer> {
+    // TODO: screenshotId로 Screenshot 레코드 조회
+    // TODO: filePath에서 파일 읽기
+    // TODO: Buffer 반환
+    // TODO: 파일이 없으면 에러 발생
+
+    try {
+      const screenshot = await this.prisma.screenshot.findUnique({
+        where: { id: screenshotId },
+      });
+
+      if (!screenshot) {
+        throw new Error(`Screenshot not found: ${screenshotId}`);
+      }
+
+      const buffer = await fs.readFile(screenshot.filePath);
+      return buffer;
+    } catch (error) {
+      logger.error(`getScreenshotBuffer failed for screenshot ${screenshotId}:`, error);
+      throw error;
+    }
+  }
+}
+
+// 싱글턴 인스턴스 내보내기
+export const screenshotService = new ScreenshotService();

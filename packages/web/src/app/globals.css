@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   KWATCH Dark Theme CSS Variables
+   ============================================ */
+
+:root {
+  /* 배경 */
+  --bg-primary: #0F172A;
+  --bg-secondary: #1E293B;
+  --bg-tertiary: #334155;
+
+  /* 텍스트 */
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
+  /* 상태 색상 */
+  --status-normal: #00C853;
+  --status-warning: #FFB300;
+  --status-critical: #FF1744;
+  --status-checking: #42A5F5;
+  --status-unknown: #78909C;
+
+  /* 강조 */
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+}
+
+/* ============================================
+   글로벌 스타일
+   ============================================ */
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Pretendard', system-ui, -apple-system, sans-serif;
+}
+
+/* 스크롤바 커스텀 (전광판용) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================
+   키오스크 모드
+   ============================================ */
+
+.kiosk-mode {
+  cursor: none;
+  overflow: hidden;
+}
+
+.kiosk-mode * {
+  cursor: none !important;
+}
+
+/* ============================================
+   상태 표시등 애니메이션
+   ============================================ */
+
+@keyframes statusPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.status-dot-critical {
+  animation: statusPulse 1.5s ease-in-out infinite;
+}
+
+/* ============================================
+   알림 타임라인 스크롤
+   ============================================ */
+
+@keyframes scrollTimeline {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.timeline-scroll {
+  animation: scrollTimeline 30s linear infinite;
+}
+
+.timeline-scroll:hover {
+  animation-play-state: paused;
+}

@@ -1,0 +1,412 @@
+import path from 'path';
+import fs from 'fs/promises';
+import { PNG } from 'pngjs';
+import pixelmatch from 'pixelmatch';
+import sharp from 'sharp';
+import { getDbClient } from '../config/database';
+import { config } from '../config';
+import { logger } from '../utils/logger';
+import { DefacementResult } from '../types';
+import { emitDefacementDetected } from '../websocket/socketServer';
+import { alertService } from './AlertService';
+
+/**
+ * 위변조(Defacement) 탐지 서비스
+ * 픽셀 단위 이미지 비교를 통해 웹사이트 메인페이지의 위변조 여부를 감지합니다.
+ */
+export class DefacementService {
+  private prisma = getDbClient();
+  private readonly screenshotDir = config.screenshot.dir;
+  private readonly currentDir = path.join(this.screenshotDir, 'current');
+  private readonly baselineDir = path.join(this.screenshotDir, 'baselines');
+  private readonly diffDir = path.join(this.screenshotDir, 'diffs');
+
+  constructor() {
+    // TODO: 위변조 디렉토리 초기화
+  }
+
+  /**
+   * 현재 스크린샷을 베이스라인과 비교합니다
+   * @param websiteId 웹사이트 ID
+   * @param screenshotId 현재 스크린샷 ID
+   * @returns DefacementResult {similarityScore, isDefaced, diffImagePath}
+   */
+  async compareWithBaseline(
+    websiteId: number,
+    screenshotId: bigint,
+  ): Promise<DefacementResult> {
+    // TODO: 웹사이트의 활성 베이스라인 조회
+    // TODO: 베이스라인 스크린샷 파일 읽기
+    // TODO: 현재 스크린샷 파일 읽기
+    // TODO: 이미지 정규화 (같은 크기로 리사이즈)
+    // TODO: pixelmatch로 픽셀 비교
+    // TODO: 유사도 점수 계산 (0~100%)
+    // TODO: 임계값(기본 85%) 이하 시 위변조 판정
+    // TODO: 위변조 감지 시 diff 이미지 생성
+    // TODO: DefacementCheck 레코드 저장
+    // TODO: 위변조 감지 시 AlertService와 연동
+
+    try {
+      // TODO: 활성 베이스라인 조회
+      const baseline = await this.prisma.defacementBaseline.findFirst({
+        where: {
+          websiteId,
+          isActive: true,
+        },
+        include: {
+          screenshot: true,
+        },
+      });
+
+      if (!baseline) {
+        logger.warn(`No active baseline found for website ${websiteId}`);
+        throw new Error(`No baseline available for website ${websiteId}`);
+      }
+
+      // TODO: 현재 스크린샷 조회
+      const currentScreenshot = await this.prisma.screenshot.findUnique({
+        where: { id: screenshotId },
+      });
+
+      if (!currentScreenshot) {
+        throw new Error(`Screenshot not found: ${screenshotId}`);
+      }
+
+      // TODO: 이미지 파일 읽기
+      const baselineBuffer = await fs.readFile(baseline.screenshot.filePath);
+      const currentBuffer = await fs.readFile(currentScreenshot.filePath);
+
+      // TODO: 이미지 정규화 (같은 크기로 리사이즈)
+      const normalized = await this.normalizeImages(baselineBuffer, currentBuffer);
+
+      const { similarityScore, diffImagePath } = await this.comparePixels(
+        normalized.baselineBuffer,
+        normalized.currentBuffer,
+        0, // width/height now read from PNG metadata inside comparePixels
+        0,
+        websiteId,
+      );
+
+      // TODO: 위변조 여부 판정
+      const isDefaced = similarityScore < config.monitoring.defacementThreshold;
+
+      // TODO: DefacementCheck 레코드 저장
+      const defacementCheck = await this.prisma.defacementCheck.create({
+        data: {
+          websiteId,
+          baselineId: baseline.id,
+          currentScreenshotId: screenshotId,
+          similarityScore,
+          isDefaced,
+          diffImagePath,
+        },
+      });
+
+      logger.info(
+        `Defacement check completed for website ${websiteId}: ${isDefaced ? 'DEFACED' : 'NORMAL'} (similarity: ${similarityScore.toFixed(2)}%)`,
+      );
+
+      if (isDefaced) {
+        const website = await this.prisma.website.findUnique({
+          where: { id: websiteId },
+        });
+
+        emitDefacementDetected({
+          websiteId,
+          websiteName: website?.name || `Website ${websiteId}`,
+          similarityScore,
+          diffImageUrl: diffImagePath ? `/api/defacement/diff/${defacementCheck.id}` : null,
+        });
+
+        await alertService.createAlert({
+          websiteId,
+          alertType: 'DEFACEMENT',
+          severity: 'CRITICAL',
+          message: `위변조 감지 - 유사도 ${similarityScore.toFixed(2)}% (임계값: ${config.monitoring.defacementThreshold}%)`,
+        });
+      }
+
+      return {
+        similarityScore,
+        isDefaced,
+        diffImagePath,
+      };
+    } catch (error) {
+      logger.error(`compareWithBaseline failed for website ${websiteId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 두 이미지를 같은 크기로 정규화합니다
+   * @param baselineBuffer 베이스라인 이미지 Buffer
+   * @param currentBuffer 현재 이미지 Buffer
+   * @returns 정규화된 이미지 Buffers
+   */
+  private async normalizeImages(
+    baselineBuffer: Buffer,
+    currentBuffer: Buffer,
+  ): Promise<{ baselineBuffer: Buffer; currentBuffer: Buffer }> {
+    // TODO: 두 이미지의 메타데이터 조회 (너비, 높이)
+    // TODO: 다른 크기면 현재 이미지를 베이스라인 크기로 리사이즈
+    // TODO: sharp를 이용한 리사이징
+
+    try {
+      const baselineMetadata = await sharp(baselineBuffer).metadata();
+      const currentMetadata = await sharp(currentBuffer).metadata();
+
+      if (
+        baselineMetadata.width === currentMetadata.width &&
+        baselineMetadata.height === currentMetadata.height
+      ) {
+        // 이미 같은 크기
+        return { baselineBuffer, currentBuffer };
+      }
+
+      const targetWidth = baselineMetadata.width || config.screenshot.viewportWidth;
+      const targetHeight = baselineMetadata.height || config.screenshot.viewportHeight;
+
+      const resizedCurrentBuffer = await sharp(currentBuffer)
+        .resize(targetWidth, targetHeight, { fit: 'fill' })
+        .png()
+        .toBuffer();
+
+      const normalizedBaselineBuffer = await sharp(baselineBuffer)
+        .png()
+        .toBuffer();
+
+      return {
+        baselineBuffer: normalizedBaselineBuffer,
+        currentBuffer: resizedCurrentBuffer,
+      };
+    } catch (error) {
+      logger.error('normalizeImages failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * pixelmatch를 이용하여 두 이미지를 픽셀 단위로 비교합니다
+   * @param baselineBuffer 베이스라인 이미지 Buffer
+   * @param currentBuffer 현재 이미지 Buffer
+   * @param width 이미지 너비
+   * @param height 이미지 높이
+   * @param websiteId 웹사이트 ID (diff 이미지 경로 생성용)
+   * @returns 유사도 점수와 diff 이미지 경로
+   */
+  private async comparePixels(
+    baselineBuffer: Buffer,
+    currentBuffer: Buffer,
+    width: number,
+    height: number,
+    websiteId: number,
+  ): Promise<{ similarityScore: number; diffImagePath: string | null }> {
+    // TODO: PNG 객체로 변환
+    // TODO: pixelmatch 옵션 설정
+    //   - threshold: 0.1 (색상 차이 민감도)
+    //   - includeAA: false (안티앨리어싱 무시)
+    //   - alpha: 0.1 (투명도 차이 민감도)
+    // TODO: 비교 수행
+    // TODO: 유사도 점수 계산
+    // TODO: 차이 있으면 diff 이미지 생성 및 저장
+    // TODO: diff 이미지 경로 반환
+
+    try {
+      const baselinePng = PNG.sync.read(baselineBuffer);
+      const currentPng = PNG.sync.read(currentBuffer);
+
+      const imgWidth = baselinePng.width;
+      const imgHeight = baselinePng.height;
+
+      const diffPng = new PNG({ width: imgWidth, height: imgHeight });
+      const numDiffPixels = pixelmatch(
+        baselinePng.data as unknown as Uint8Array,
+        currentPng.data as unknown as Uint8Array,
+        diffPng.data as unknown as Uint8Array,
+        imgWidth,
+        imgHeight,
+        { threshold: 0.1, includeAA: false, alpha: 0.1 },
+      );
+
+      const totalPixels = imgWidth * imgHeight;
+      const similarityScore = ((totalPixels - numDiffPixels) / totalPixels) * 100;
+
+      let diffImagePath: string | null = null;
+      if (numDiffPixels > 0) {
+        await fs.mkdir(this.diffDir, { recursive: true });
+        const diffFilename = `${websiteId}_${Date.now()}_diff.png`;
+        diffImagePath = path.join(this.diffDir, diffFilename);
+        const diffBuffer = PNG.sync.write(diffPng);
+        await fs.writeFile(diffImagePath, diffBuffer);
+      }
+
+      return { similarityScore, diffImagePath };
+    } catch (error) {
+      logger.error('comparePixels failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 베이스라인을 갱신합니다
+   * @param websiteId 웹사이트 ID
+   * @param screenshotId 새 베이스라인으로 사용할 스크린샷 ID
+   * @param userId 갱신 요청자 ID
+   */
+  async updateBaseline(
+    websiteId: number,
+    screenshotId: bigint,
+    userId: number,
+  ): Promise<void> {
+    // TODO: 스크린샷 존재 여부 확인
+    // TODO: 기존 활성 베이스라인 비활성화 (isActive=false)
+    // TODO: 새 베이스라인 생성
+    // TODO: 베이스라인 디렉토리에 파일 복사 (선택사항)
+    // TODO: DefacementBaseline 레코드 생성 (isActive=true)
+    // TODO: 베이스라인 갱신 로그 기록
+
+    try {
+      // TODO: 스크린샷 존재 확인
+      const screenshot = await this.prisma.screenshot.findUnique({
+        where: { id: screenshotId },
+      });
+
+      if (!screenshot || screenshot.websiteId !== websiteId) {
+        throw new Error(`Invalid screenshot: ${screenshotId}`);
+      }
+
+      // TODO: 기존 활성 베이스라인 비활성화
+      const existingBaseline = await this.prisma.defacementBaseline.findFirst({
+        where: { websiteId, isActive: true },
+      });
+
+      if (existingBaseline) {
+        await this.prisma.defacementBaseline.update({
+          where: { id: existingBaseline.id },
+          data: { isActive: false },
+        });
+      }
+
+      // TODO: 새 베이스라인 생성
+      await this.prisma.defacementBaseline.create({
+        data: {
+          websiteId,
+          screenshotId,
+          createdBy: userId,
+          isActive: true,
+          hash: null, // TODO: 이미지 해시 계산 (선택사항)
+        },
+      });
+
+      logger.info(
+        `Baseline updated for website ${websiteId} by user ${userId}: screenshot ${screenshotId}`,
+      );
+    } catch (error) {
+      logger.error(
+        `updateBaseline failed for website ${websiteId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * 특정 웹사이트의 최신 위변조 체크 결과를 조회합니다
+   * @param websiteId 웹사이트 ID
+   * @returns 최신 DefacementCheck 정보
+   */
+  async getLatestCheck(websiteId: number): Promise<any | null> {
+    // TODO: 최신 DefacementCheck 레코드 조회
+    // TODO: defacementBaseline, currentScreenshot 포함
+    // TODO: 없으면 null 반환
+
+    try {
+      const latestCheck = await this.prisma.defacementCheck.findFirst({
+        where: { websiteId },
+        orderBy: { checkedAt: 'desc' },
+        include: {
+          baseline: true,
+          currentScreenshot: true,
+        },
+      });
+
+      return latestCheck || null;
+    } catch (error) {
+      logger.error(`getLatestCheck failed for website ${websiteId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 특정 웹사이트의 위변조 체크 이력을 조회합니다
+   * @param websiteId 웹사이트 ID
+   * @param limit 최대 개수
+   * @param offset 오프셋
+   * @returns DefacementCheck 배열
+   */
+  async getHistory(
+    websiteId: number,
+    limit: number = 50,
+    offset: number = 0,
+  ): Promise<any[]> {
+    // TODO: 특정 웹사이트의 DefacementCheck를 시간순으로 조회
+    // TODO: limit, offset을 이용한 페이지네이션
+    // TODO: 최신 순서로 반환
+
+    try {
+      const checks = await this.prisma.defacementCheck.findMany({
+        where: { websiteId },
+        orderBy: { checkedAt: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          baseline: true,
+        },
+      });
+
+      return checks;
+    } catch (error) {
+      logger.error(`getHistory failed for website ${websiteId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 위변조 임계값을 조회합니다
+   * @returns 기본 임계값 (%)
+   */
+  getDefacementThreshold(): number {
+    return config.monitoring.defacementThreshold;
+  }
+
+  /**
+   * 차이 이미지를 읽어 Buffer로 반환합니다
+   * @param checkId DefacementCheck ID
+   * @returns 이미지 Buffer
+   */
+  async getDiffImageBuffer(checkId: bigint): Promise<Buffer> {
+    // TODO: checkId로 DefacementCheck 레코드 조회
+    // TODO: diffImagePath에서 파일 읽기
+    // TODO: Buffer 반환
+    // TODO: 파일이 없으면 에러 발생
+
+    try {
+      const check = await this.prisma.defacementCheck.findUnique({
+        where: { id: checkId },
+      });
+
+      if (!check || !check.diffImagePath) {
+        throw new Error(`Diff image not found: ${checkId}`);
+      }
+
+      const buffer = await fs.readFile(check.diffImagePath);
+      return buffer;
+    } catch (error) {
+      logger.error(`getDiffImageBuffer failed for check ${checkId}:`, error);
+      throw error;
+    }
+  }
+}
+
+// 싱글턴 인스턴스 내보내기
+export const defacementService = new DefacementService();

@@ -1,0 +1,23 @@
+version: '3.8'
+
+# 개발 환경 오버라이드
+# 사용법: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  db:
+    ports:
+      - '5432:5432'
+
+  redis:
+    ports:
+      - '6379:6379'
+
+  # 개발 시에는 서버/웹을 로컬에서 실행하므로,
+  # DB와 Redis만 Docker로 실행합니다.
+  server:
+    profiles:
+      - full  # docker-compose --profile full up 으로만 실행
+
+  web:
+    profiles:
+      - full  # docker-compose --profile full up 으로만 실행
