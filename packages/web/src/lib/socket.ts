@@ -29,12 +29,11 @@ export const connectSocket = (): Socket => {
   });
 
   socket.on('connect', () => {
-    console.log('[WS] Dashboard connected');
     socket?.emit('dashboard:subscribe');
   });
 
-  socket.on('disconnect', (reason) => {
-    console.log('[WS] Disconnected:', reason);
+  socket.on('disconnect', () => {
+    // reconnection handled automatically by socket.io
   });
 
   socket.on('connect_error', (error) => {

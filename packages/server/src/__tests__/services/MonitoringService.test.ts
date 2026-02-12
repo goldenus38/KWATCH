@@ -77,10 +77,16 @@ describe('MonitoringService', () => {
           monitoringResults: [{ isUp: true, responseTimeMs: 100, checkedAt: now }],
           defacementChecks: [],
         },
-        // down site
+        // down site (5 consecutive failures required)
         {
           id: 2, isActive: true,
-          monitoringResults: [{ isUp: false, responseTimeMs: null, checkedAt: now }],
+          monitoringResults: [
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+          ],
           defacementChecks: [],
         },
         // warning (slow) site
@@ -89,11 +95,15 @@ describe('MonitoringService', () => {
           monitoringResults: [{ isUp: true, responseTimeMs: 5000, checkedAt: now }],
           defacementChecks: [],
         },
-        // defaced site
+        // defaced site (3 consecutive detections required)
         {
           id: 4, isActive: true,
           monitoringResults: [{ isUp: true, responseTimeMs: 200, checkedAt: now }],
-          defacementChecks: [{ isDefaced: true }],
+          defacementChecks: [
+            { isDefaced: true },
+            { isDefaced: true },
+            { isDefaced: true },
+          ],
         },
         // unknown site (no results)
         {

@@ -64,7 +64,7 @@ export function useMonitoringData(
     } finally {
       setIsLoading(false);
     }
-  }, [filter]);
+  }, []);
 
   // WebSocket 이벤트 수신
   useEffect(() => {

@@ -128,7 +128,7 @@ export default function LoginPage() {
 
           {/* 안내문 */}
           <div className="mt-6 text-center text-xs text-kwatch-text-muted">
-            <p>관리자: admin / admin1234</p>
+            <p>웹사이트 관제 시스템에 로그인하세요.</p>
           </div>
         </div>
       </div>

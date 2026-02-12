@@ -35,7 +35,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Pretendard', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Noto Sans KR', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       fontSize: {

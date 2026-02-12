@@ -9,7 +9,16 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // 모니터링 설정
+  const [checkInterval, setCheckInterval] = useState(300);
+  const [monitoringStats, setMonitoringStats] = useState<{
+    totalWebsites: number;
+    checkInterval: { avg: number; min: number; max: number; mode: number };
+  } | null>(null);
+  const [isSavingInterval, setIsSavingInterval] = useState(false);
 
   // 현재 사용자 정보 로드
   useEffect(() => {
@@ -61,9 +70,53 @@ export default function SettingsPage() {
     }
   };
 
+  // 모니터링 설정 조회
+  const fetchMonitoringSettings = async () => {
+    try {
+      const response = await api.get<{
+        totalWebsites: number;
+        checkInterval: { avg: number; min: number; max: number; mode: number };
+      }>('/api/settings/monitoring');
+
+      if (response.success && response.data) {
+        setMonitoringStats(response.data);
+        setCheckInterval(response.data.checkInterval.mode);
+      }
+    } catch (err) {
+      console.error('Error fetching monitoring settings:', err);
+    }
+  };
+
+  // 체크 주기 저장
+  const handleSaveCheckInterval = async () => {
+    setIsSavingInterval(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await api.put<{ updatedCount: number; message: string }>(
+        '/api/settings/monitoring/check-interval',
+        { checkIntervalSeconds: checkInterval },
+      );
+
+      if (response.success && response.data) {
+        setSuccessMessage(response.data.message);
+        fetchMonitoringSettings();
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setError(response.error?.message || '체크 주기 변경에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsSavingInterval(false);
+    }
+  };
+
   // 초기 로드
   useEffect(() => {
     fetchAlertChannels();
+    fetchMonitoringSettings();
     if (currentUser?.role === 'admin') {
       fetchUsers();
     }
@@ -113,7 +166,97 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* 섹션 1: 알림 채널 설정 */}
+      {/* 성공 메시지 */}
+      {successMessage && (
+        <div className="p-4 bg-kwatch-status-normal bg-opacity-10 border border-kwatch-status-normal rounded-md text-kwatch-status-normal">
+          {successMessage}
+        </div>
+      )}
+
+      {/* 섹션 1: 모니터링 설정 */}
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold text-kwatch-text-primary">
+          모니터링 설정
+        </h2>
+
+        <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 space-y-6">
+          {/* 현재 상태 요약 */}
+          {monitoringStats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">모니터링 사이트</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {monitoringStats.totalWebsites}개
+                </div>
+              </div>
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">현재 체크 주기</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {monitoringStats.checkInterval.mode}초
+                </div>
+              </div>
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">최소 주기</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {monitoringStats.checkInterval.min}초
+                </div>
+              </div>
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">최대 주기</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {monitoringStats.checkInterval.max}초
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 체크 주기 변경 */}
+          <div>
+            <label className="block text-sm font-medium text-kwatch-text-primary mb-2">
+              HTTP 상태체크 주기 (초)
+            </label>
+            <div className="flex items-center gap-4">
+              <input
+                type="number"
+                value={checkInterval}
+                onChange={(e) => setCheckInterval(Math.max(10, Math.min(86400, parseInt(e.target.value) || 10)))}
+                min="10"
+                max="86400"
+                step="10"
+                className="w-32 px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+              />
+              <div className="flex gap-2">
+                {[60, 120, 180, 300, 600].map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => setCheckInterval(val)}
+                    className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                      checkInterval === val
+                        ? 'bg-kwatch-accent text-white'
+                        : 'bg-kwatch-bg-primary border border-kwatch-bg-tertiary text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary'
+                    }`}
+                  >
+                    {val >= 60 ? `${val / 60}분` : `${val}초`}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-kwatch-text-muted mt-2">
+              모든 활성 웹사이트에 일괄 적용됩니다. 10초~86400초(24시간) 범위에서 설정 가능합니다.
+            </p>
+          </div>
+
+          <button
+            onClick={handleSaveCheckInterval}
+            disabled={isSavingInterval}
+            className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors"
+          >
+            {isSavingInterval ? '적용 중...' : '체크 주기 적용'}
+          </button>
+        </div>
+      </div>
+
+      {/* 섹션 2: 알림 채널 설정 */}
       <div className="space-y-4">
         <h2 className="text-2xl font-semibold text-kwatch-text-primary">
           알림 채널 설정
@@ -208,7 +351,11 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <button className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover text-white rounded-md font-medium transition-colors">
+          <button
+            disabled
+            title="준비 중"
+            className="px-6 py-2 bg-kwatch-accent text-white rounded-md font-medium transition-colors opacity-50 cursor-not-allowed"
+          >
             저장
           </button>
         </div>
@@ -274,10 +421,18 @@ export default function SettingsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-3 text-sm space-x-2">
-                        <button className="text-kwatch-accent hover:text-kwatch-accent-hover transition-colors">
+                        <button
+                          disabled
+                          title="준비 중"
+                          className="text-kwatch-accent opacity-50 cursor-not-allowed"
+                        >
                           수정
                         </button>
-                        <button className="text-kwatch-status-critical hover:opacity-80 transition-opacity">
+                        <button
+                          disabled
+                          title="준비 중"
+                          className="text-kwatch-status-critical opacity-50 cursor-not-allowed"
+                        >
                           삭제
                         </button>
                       </td>
@@ -288,16 +443,16 @@ export default function SettingsPage() {
             </table>
           </div>
 
-          <button className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover text-white rounded-md font-medium transition-colors">
+          <button
+            disabled
+            title="준비 중"
+            className="px-6 py-2 bg-kwatch-accent text-white rounded-md font-medium transition-colors opacity-50 cursor-not-allowed"
+          >
             + 새 사용자 추가
           </button>
         </div>
       )}
 
-      {/* TODO: 모니터링 설정 (기본 체크 간격, 타임아웃 등) */}
-      {/* TODO: 위변조 탐지 설정 (임계값, 연속 감지 횟수 등) */}
-      {/* TODO: 데이터 보관 정책 설정 */}
-      {/* TODO: 백업 및 복원 */}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { getRedisClient } from '../config/redis';
 import { getDbClient } from '../config/database';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 import { monitoringService } from '../services/MonitoringService';
 import { alertService } from '../services/AlertService';
@@ -83,16 +84,24 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
           });
         }
 
-        // 스크린샷 작업 큐에 추가
+        // 스크린샷 작업 큐에 추가 (Redis rate limit으로 주기 제한)
         try {
-          await schedulerService.enqueueScreenshot(
-            {
-              id: job.data.websiteId,
-              url: job.data.url,
-            },
-            false,
-          );
-          logger.debug(`[MonitoringWorker] Screenshot job enqueued for website ${job.data.websiteId}`);
+          const redis = getRedisClient();
+          const screenshotInterval = config.monitoring.screenshotInterval;
+          const rateLimitKey = `screenshot:ratelimit:${job.data.websiteId}`;
+          const isLimited = await redis.get(rateLimitKey);
+
+          if (!isLimited) {
+            await redis.set(rateLimitKey, '1', 'EX', screenshotInterval);
+            await schedulerService.enqueueScreenshot(
+              {
+                id: job.data.websiteId,
+                url: job.data.url,
+              },
+              false,
+            );
+            logger.debug(`[MonitoringWorker] Screenshot job enqueued for website ${job.data.websiteId}`);
+          }
         } catch (error) {
           logger.warn(
             `[MonitoringWorker] Failed to enqueue screenshot for website ${job.data.websiteId}:`,

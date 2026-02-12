@@ -179,8 +179,8 @@ export function DetailPopup({
                 <h3 className="text-dashboard-base font-bold text-kwatch-text-primary mb-3">
                   웹사이트 정보
                 </h3>
-                <div className="grid grid-cols-2 gap-4 bg-kwatch-bg-tertiary/30 rounded p-4">
-                  <div>
+                <div className="grid grid-cols-3 gap-4 bg-kwatch-bg-tertiary/30 rounded p-4">
+                  <div className="col-span-3">
                     <div className="text-dashboard-sm text-kwatch-text-secondary">
                       URL
                     </div>
@@ -190,15 +190,37 @@ export function DetailPopup({
                   </div>
                   <div>
                     <div className="text-dashboard-sm text-kwatch-text-secondary">
-                      상태
+                      HTTP 상태
                     </div>
                     <div className="text-dashboard-base font-semibold">
                       {siteStatus?.isUp ? (
-                        <span className="text-kwatch-status-normal">정상</span>
+                        <span className="text-kwatch-status-normal">
+                          정상 {siteStatus?.statusCode ? `(${siteStatus.statusCode})` : ''}
+                        </span>
                       ) : (
                         <span className="text-kwatch-status-critical">
-                          {siteStatus?.errorMessage ?? '장애'}
+                          {siteStatus?.errorMessage ?? '장애'} {siteStatus?.statusCode ? `(${siteStatus.statusCode})` : ''}
                         </span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-dashboard-sm text-kwatch-text-secondary">
+                      위변조 상태
+                    </div>
+                    <div className="text-dashboard-base font-semibold">
+                      {siteStatus?.defacementStatus ? (
+                        siteStatus.defacementStatus.isDefaced ? (
+                          <span className="text-kwatch-status-critical">
+                            위변조 감지 (유사도: {siteStatus.defacementStatus.similarityScore?.toFixed(1) ?? '-'}%)
+                          </span>
+                        ) : (
+                          <span className="text-kwatch-status-normal">
+                            정상 (유사도: {siteStatus.defacementStatus.similarityScore?.toFixed(1) ?? '-'}%)
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-kwatch-text-muted">미검사</span>
                       )}
                     </div>
                   </div>

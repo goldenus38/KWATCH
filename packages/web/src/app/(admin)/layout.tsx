@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import type { User } from '@/types';
 
@@ -11,32 +11,39 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // 로그인한 사용자 정보 로드
+  // 로그인한 사용자 정보 로드 + 인증 가드
   useEffect(() => {
+    const token = localStorage.getItem('kwatch_token');
     const userJson = localStorage.getItem('kwatch_user');
-    if (userJson) {
-      try {
-        setUser(JSON.parse(userJson));
-      } catch (err) {
-        console.error('Failed to parse user:', err);
-      }
+
+    if (!token || !userJson) {
+      router.push('/login');
+      return;
     }
-  }, []);
+
+    try {
+      setUser(JSON.parse(userJson));
+    } catch (err) {
+      console.error('Failed to parse user:', err);
+      router.push('/login');
+    }
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('kwatch_token');
     localStorage.removeItem('kwatch_user');
-    router.push('/(auth)/login');
+    router.push('/login');
   };
 
   const navItems = [
-    { label: '웹사이트 관리', href: '/(admin)/websites' },
-    { label: '카테고리', href: '/(admin)/categories' },
-    { label: '알림 이력', href: '/(admin)/alerts' },
-    { label: '시스템 설정', href: '/(admin)/settings' },
+    { label: '웹사이트 관리', href: '/websites' },
+    { label: '카테고리', href: '/categories' },
+    { label: '알림 이력', href: '/alerts' },
+    { label: '시스템 설정', href: '/settings' },
   ];
 
   return (
@@ -92,21 +99,28 @@ export default function AdminLayout({
           }`}
         >
           <nav className="p-4 space-y-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="block px-4 py-3 rounded-md text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary hover:text-kwatch-text-primary transition-colors"
-              >
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`block px-4 py-3 rounded-md transition-colors ${
+                    isActive
+                      ? 'bg-kwatch-accent text-white font-medium'
+                      : 'text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary hover:text-kwatch-text-primary'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
 
           {/* 대시보드로 돌아가기 */}
           <div className="p-4 border-t border-kwatch-bg-tertiary mt-4">
             <Link
-              href="/(dashboard)"
+              href="/"
               className="flex items-center gap-2 px-4 py-3 rounded-md bg-kwatch-accent hover:bg-kwatch-accent-hover text-white font-medium transition-colors"
             >
               <svg
@@ -129,7 +143,7 @@ export default function AdminLayout({
 
         {/* 콘텐츠 영역 */}
         <main className="flex-1 overflow-y-auto">
-          <div className="p-6">{children}</div>
+          <div className="p-6">{user ? children : null}</div>
         </main>
       </div>
     </div>

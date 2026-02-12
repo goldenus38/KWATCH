@@ -21,7 +21,13 @@ describe('Monitoring Routes', () => {
         },
         {
           id: 2, isActive: true,
-          monitoringResults: [{ isUp: false, responseTimeMs: null, checkedAt: now }],
+          monitoringResults: [
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now },
+          ],
           defacementChecks: [],
         },
       ]);

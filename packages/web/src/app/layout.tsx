@@ -19,15 +19,6 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
-        <style>{`
-          :root {
-            --font-sans: 'Noto Sans KR', system-ui, -apple-system, sans-serif;
-          }
-
-          * {
-            font-family: var(--font-sans);
-          }
-        `}</style>
       </head>
       <body className="bg-kwatch-bg-primary text-kwatch-text-primary antialiased">
         {children}

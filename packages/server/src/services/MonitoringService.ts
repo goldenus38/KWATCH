@@ -9,8 +9,38 @@ import {
 import { emitStatusUpdate } from '../websocket/socketServer';
 
 /**
+ * 연속 실패 판정 임계값
+ * 최근 N회 체크가 모두 실패(isUp=false)인 경우에만 장애로 판정
+ * 일시적 네트워크 장애, 서버 재시작 등으로 인한 오탐 방지
+ */
+const CONSECUTIVE_FAILURE_THRESHOLD = 5;
+const CONSECUTIVE_DEFACEMENT_THRESHOLD = 3;
+
+/**
+ * 최근 체크 결과에서 연속 실패 횟수를 계산합니다
+ * @param results 최신순으로 정렬된 모니터링 결과 배열
+ * @returns 최근 연속 실패 횟수
+ */
+function getConsecutiveFailures(results: { isUp: boolean }[]): number {
+  let count = 0;
+  for (const result of results) {
+    if (!result.isUp) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+/**
  * 웹사이트 HTTP 상태 체크 서비스
  * 각 웹사이트의 상태 코드, 응답 시간, 정상 여부 등을 모니터링합니다.
+ *
+ * 장애 판정 로직:
+ * - 개별 체크 결과는 그대로 DB에 저장 (isUp = HTTP 2xx 여부)
+ * - 대시보드 표시 상태는 최근 5회 연속 실패 시에만 장애(down)로 판정
+ * - 1~4회 실패는 정상으로 유지 (일시적 장애 무시)
  */
 export class MonitoringService {
   private prisma = getDbClient();
@@ -30,13 +60,6 @@ export class MonitoringService {
     isUp: boolean;
     errorMessage: string | null;
   }> {
-    // TODO: URL 유효성 검증
-    // TODO: fetch 또는 axios를 이용한 HTTP 요청 수행
-    // TODO: 응답 시간 측정
-    // TODO: 상태 코드 확인 (200~299는 정상)
-    // TODO: 타임아웃 처리
-    // TODO: 네트워크 에러 처리 (ECONNREFUSED, ENOTFOUND 등)
-    // TODO: DNS 에러, SSL 에러 등 상세 에러 메시지 기록
     const startTime = Date.now();
 
     try {
@@ -110,14 +133,6 @@ export class MonitoringService {
    * @returns 체크된 웹사이트 수
    */
   async checkAllWebsites(): Promise<number> {
-    // TODO: 모든 활성 웹사이트(is_active=true) 조회
-    // TODO: 각 웹사이트별 checkWebsite() 호출 (병렬 처리, 동시 10~20개)
-    // TODO: 개별 웹사이트 체크 실패가 전체 프로세스를 중단시키지 않도록 격리
-    // TODO: MonitoringResult 테이블에 결과 저장
-    // TODO: 이상 감지 시 AlertService와 연동
-    // TODO: 체크 완료 후 WebSocket으로 대시보드 업데이트 신호 전송
-    // TODO: 총 체크된 웹사이트 수 반환
-
     try {
       const websites = await this.prisma.website.findMany({
         where: { isActive: true },
@@ -194,24 +209,18 @@ export class MonitoringService {
 
   /**
    * 특정 웹사이트의 최신 상태를 조회합니다
+   * 최근 5회 연속 실패 시에만 장애(isUp=false)로 판정
    * @param websiteId 웹사이트 ID
    * @returns MonitoringStatus 객체
    */
   async getStatus(websiteId: number): Promise<MonitoringStatus | null> {
-    // TODO: 웹사이트 정보 조회
-    // TODO: 최신 MonitoringResult 조회
-    // TODO: 최신 Screenshot 조회
-    // TODO: 최신 DefacementCheck 조회
-    // TODO: MonitoringStatus 형태로 조합하여 반환
-    // TODO: 웹사이트가 없으면 null 반환
-
     try {
       const website = await this.prisma.website.findUnique({
         where: { id: websiteId },
         include: {
           monitoringResults: {
             orderBy: { checkedAt: 'desc' },
-            take: 1,
+            take: CONSECUTIVE_FAILURE_THRESHOLD,
           },
           screenshots: {
             orderBy: { capturedAt: 'desc' },
@@ -219,7 +228,7 @@ export class MonitoringService {
           },
           defacementChecks: {
             orderBy: { checkedAt: 'desc' },
-            take: 1,
+            take: CONSECUTIVE_DEFACEMENT_THRESHOLD,
           },
         },
       });
@@ -228,11 +237,23 @@ export class MonitoringService {
         return null;
       }
 
-      const latestResult = website.monitoringResults[0];
+      const results = website.monitoringResults;
+      const latestResult = results[0];
       const latestScreenshot = website.screenshots[0];
-      const latestDefacement = website.defacementChecks[0];
+      const defacementChecks = website.defacementChecks;
+      const latestDefacement = defacementChecks[0];
 
-      // TODO: 스크린샷 URL 생성 로직
+      // 연속 실패 판정: 최근 5회가 모두 실패해야 장애
+      const consecutiveFailures = getConsecutiveFailures(results);
+      const isDown = consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD;
+
+      // 연속 위변조 판정: 최근 3회가 모두 위변조여야 위변조
+      let consecutiveDefaced = 0;
+      for (const check of defacementChecks) {
+        if (check.isDefaced) consecutiveDefaced++;
+        else break;
+      }
+      const isDefaced = consecutiveDefaced >= CONSECUTIVE_DEFACEMENT_THRESHOLD;
 
       return {
         websiteId: website.id,
@@ -240,13 +261,13 @@ export class MonitoringService {
         url: website.url,
         statusCode: latestResult?.statusCode ?? null,
         responseTimeMs: latestResult?.responseTimeMs ?? null,
-        isUp: latestResult?.isUp ?? false,
+        isUp: latestResult ? !isDown : false,
         errorMessage: latestResult?.errorMessage ?? null,
         checkedAt: latestResult?.checkedAt ?? new Date(),
         screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
         defacementStatus: latestDefacement
           ? {
-              isDefaced: latestDefacement.isDefaced,
+              isDefaced,
               similarityScore: latestDefacement.similarityScore
                 ? Number(latestDefacement.similarityScore)
                 : null,
@@ -261,6 +282,7 @@ export class MonitoringService {
 
   /**
    * 모든 활성 웹사이트의 상태를 조회합니다
+   * 최근 5회 연속 실패 시에만 장애로 판정
    * @returns MonitoringStatus 배열
    */
   async getAllStatuses(): Promise<MonitoringStatus[]> {
@@ -270,7 +292,7 @@ export class MonitoringService {
         include: {
           monitoringResults: {
             orderBy: { checkedAt: 'desc' },
-            take: 1,
+            take: CONSECUTIVE_FAILURE_THRESHOLD,
           },
           screenshots: {
             orderBy: { capturedAt: 'desc' },
@@ -278,15 +300,28 @@ export class MonitoringService {
           },
           defacementChecks: {
             orderBy: { checkedAt: 'desc' },
-            take: 1,
+            take: CONSECUTIVE_DEFACEMENT_THRESHOLD,
           },
         },
       });
 
       return websites.map((website) => {
-        const latestResult = website.monitoringResults[0];
+        const results = website.monitoringResults;
+        const latestResult = results[0];
         const latestScreenshot = website.screenshots[0];
-        const latestDefacement = website.defacementChecks[0];
+        const defacementChecks = website.defacementChecks;
+        const latestDefacement = defacementChecks[0];
+
+        const consecutiveFailures = getConsecutiveFailures(results);
+        const isDown = consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD;
+
+        // 연속 위변조 판정
+        let consecutiveDefaced = 0;
+        for (const check of defacementChecks) {
+          if (check.isDefaced) consecutiveDefaced++;
+          else break;
+        }
+        const isDefaced = consecutiveDefaced >= CONSECUTIVE_DEFACEMENT_THRESHOLD;
 
         return {
           websiteId: website.id,
@@ -294,13 +329,13 @@ export class MonitoringService {
           url: website.url,
           statusCode: latestResult?.statusCode ?? null,
           responseTimeMs: latestResult?.responseTimeMs ?? null,
-          isUp: latestResult?.isUp ?? false,
+          isUp: latestResult ? !isDown : false,
           errorMessage: latestResult?.errorMessage ?? null,
           checkedAt: latestResult?.checkedAt ?? new Date(),
           screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
           defacementStatus: latestDefacement
             ? {
-                isDefaced: latestDefacement.isDefaced,
+                isDefaced,
                 similarityScore: latestDefacement.similarityScore
                   ? Number(latestDefacement.similarityScore)
                   : null,
@@ -316,30 +351,21 @@ export class MonitoringService {
 
   /**
    * 대시보드용 전체 상태 요약을 조회합니다
+   * 최근 5회 연속 실패 시에만 장애(down)로 카운트
    * @returns DashboardSummary {total, up, down, warning, defaced, unknown, lastScanAt}
    */
   async getDashboardSummary(): Promise<DashboardSummary> {
-    // TODO: 모든 활성 웹사이트 총 개수
-    // TODO: 각 상태별 웹사이트 수 계산
-    //   - up: 최신 결과가 statusCode 200~299 and isUp=true
-    //   - down: 최신 결과가 isUp=false
-    //   - warning: isUp=true but responseTimeMs > threshold (예: 1000ms)
-    //   - defaced: 최신 defacementCheck에서 isDefaced=true
-    //   - unknown: 아직 체크 결과가 없는 웹사이트
-    // TODO: 전체 마지막 스캔 시간 (최신 monitoringResult의 checkedAt)
-    // TODO: DashboardSummary 형태로 반환
-
     try {
       const websites = await this.prisma.website.findMany({
         where: { isActive: true },
         include: {
           monitoringResults: {
             orderBy: { checkedAt: 'desc' },
-            take: 1,
+            take: CONSECUTIVE_FAILURE_THRESHOLD,
           },
           defacementChecks: {
             orderBy: { checkedAt: 'desc' },
-            take: 1,
+            take: CONSECUTIVE_DEFACEMENT_THRESHOLD,
           },
         },
       });
@@ -352,10 +378,17 @@ export class MonitoringService {
       let lastScanAt: Date | null = null;
 
       for (const website of websites) {
-        const latestResult = website.monitoringResults[0];
-        const latestDefacement = website.defacementChecks[0];
+        const results = website.monitoringResults;
+        const latestResult = results[0];
+        const defacementChecks = website.defacementChecks;
 
-        if (latestDefacement?.isDefaced) {
+        // 연속 위변조 판정
+        let consecutiveDefaced = 0;
+        for (const check of defacementChecks) {
+          if (check.isDefaced) consecutiveDefaced++;
+          else break;
+        }
+        if (consecutiveDefaced >= CONSECUTIVE_DEFACEMENT_THRESHOLD) {
           defaced++;
         }
 
@@ -368,7 +401,10 @@ export class MonitoringService {
           lastScanAt = latestResult.checkedAt;
         }
 
-        if (!latestResult.isUp) {
+        const consecutiveFailures = getConsecutiveFailures(results);
+        const isDown = consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD;
+
+        if (isDown) {
           down++;
         } else if (latestResult.responseTimeMs && latestResult.responseTimeMs > 3000) {
           warning++;
@@ -406,10 +442,6 @@ export class MonitoringService {
     limit: number = 100,
     offset: number = 0,
   ): Promise<any[]> {
-    // TODO: 특정 웹사이트의 MonitoringResult를 시간순으로 조회
-    // TODO: limit, offset을 이용한 페이지네이션
-    // TODO: 최신 순서로 반환
-
     try {
       const results = await this.prisma.monitoringResult.findMany({
         where: { websiteId },

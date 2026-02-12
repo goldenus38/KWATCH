@@ -736,6 +736,25 @@ DEFACEMENT_WEIGHT_CRITICAL=0.4
 HTML_ANALYSIS_ENABLED=true
 ```
 
+### 코드 리뷰 (2026-02-13)
+
+v1.0 전체 코드 리뷰 수행 후 9건 수정 완료:
+
+**CRITICAL (4건 수정):**
+- 로그인 페이지 하드코딩 자격증명(`admin/admin1234`) 제거
+- 관리자 페이지(`/admin`) 인증 가드 추가 (token+user 검증, 미인증 시 `/login` 리다이렉트)
+- Settings 페이지 미구현 버튼(대시보드 저장, 사용자 수정/삭제/추가) `disabled` 처리
+- WebSocket `console.log` 제거 (`connect_error`의 `console.error`만 유지)
+
+**HIGH (2건 수정):**
+- SiteCard 이미지 `onError` 핸들러 추가 (깨진 이미지 대신 "No Image" fallback)
+- MonitoringService 테스트 mock 데이터 수정 (연속 실패 5회/위변조 3회 임계값 반영)
+
+**MEDIUM (3건 수정):**
+- Tailwind 폰트 설정을 `Noto Sans KR`로 통일 (layout.tsx와 일치)
+- `useMonitoringData` 의존성 배열 `[filter]` → `[]` (무한 루프 방지)
+- SiteCard에 `React.memo` 적용 (불필요한 리렌더 방지)
+
 ### 알려진 이슈
 
 - `korea.go.kr`: SSL 인증서 불일치(`ERR_TLS_CERT_ALTNAME_INVALID`)로 모니터링/스크린샷 불가 (사이트 자체 문제)

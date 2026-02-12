@@ -16,6 +16,11 @@ import { initScreenshotWorker } from './workers/screenshotWorker';
 import { initDefacementWorker } from './workers/defacementWorker';
 import apiRouter from './routes';
 
+// BigInt를 JSON으로 직렬화할 수 있도록 설정 (Prisma BIGSERIAL 필드 지원)
+(BigInt.prototype as any).toJSON = function () {
+  return Number(this);
+};
+
 /**
  * Express 앱을 생성하고 초기화합니다
  */

@@ -145,9 +145,9 @@ export function SummaryBar({
 
           {/* 관리 페이지 링크 */}
           <Link
-            href="/websites"
+            href="/settings"
             className="text-dashboard-sm text-kwatch-text-secondary hover:text-kwatch-text-primary transition-colors px-2 py-1 rounded hover:bg-kwatch-bg-tertiary"
-            title="관리 페이지"
+            title="설정"
           >
             ⚙
           </Link>

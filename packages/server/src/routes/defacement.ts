@@ -126,6 +126,7 @@ router.get('/diff/:checkId', async (req, res) => {
 
     res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(buffer);
   } catch (error) {
     sendError(res, 'FILE_ERROR', '차이 이미지 조회 중 오류가 발생했습니다.', 500);

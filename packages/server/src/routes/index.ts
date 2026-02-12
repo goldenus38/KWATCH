@@ -9,6 +9,7 @@ import monitoringRouter from './monitoring';
 import screenshotsRouter from './screenshots';
 import defacementRouter from './defacement';
 import alertsRouter from './alerts';
+import settingsRouter from './settings';
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.use('/categories', categoriesRouter);
 router.use('/monitoring', monitoringRouter);
 router.use('/defacement', defacementRouter);
 router.use('/alerts', alertsRouter);
+router.use('/settings', settingsRouter);
 
 /**
  * 헬스 체크 엔드포인트

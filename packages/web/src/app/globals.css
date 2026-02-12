@@ -7,6 +7,9 @@
    ============================================ */
 
 :root {
+  /* 폰트 */
+  --font-sans: 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+
   /* 배경 */
   --bg-primary: #0F172A;
   --bg-secondary: #1E293B;
@@ -36,7 +39,7 @@
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Pretendard', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* 스크롤바 커스텀 (전광판용) */
