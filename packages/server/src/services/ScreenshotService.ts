@@ -70,6 +70,12 @@ export class ScreenshotService {
       // TODO: 새 페이지 컨텍스트 생성
       page = await browser.newPage();
 
+      // JS alert/confirm/prompt 자동 dismiss (페이지 로드 전에 등록)
+      page.on('dialog', async (dialog) => {
+        logger.debug(`Auto-dismissed ${dialog.type()} dialog for website ${websiteId}: ${dialog.message().slice(0, 100)}`);
+        await dialog.dismiss();
+      });
+
       // TODO: 뷰포트 설정 (1920x1080)
       await page.setViewportSize({
         width: config.screenshot.viewportWidth,
@@ -79,12 +85,21 @@ export class ScreenshotService {
       // TODO: 타임아웃 설정
       page.setDefaultTimeout(config.screenshot.timeout);
 
+      // window.open 팝업 차단 (네비게이션 전에 주입)
+      await page.addInitScript('window.open = () => null;');
+
       // TODO: URL로 네비게이션 (waitUntil: 'networkidle' 권장)
       // TODO: 페이지 로딩 실패 시 에러 처리
       await page.goto(url, { waitUntil: 'networkidle', timeout: config.screenshot.timeout });
 
       // 페이지 로드 후 추가 대기 (JS 렌더링, 폰트 로딩, 이미지 lazy load 완료 보장)
       await page.waitForTimeout(3000);
+
+      // 레이어 팝업 제거 (한국 공공기관 사이트 대응)
+      await this.dismissPopups(page, websiteId);
+
+      // 팝업 제거 후 렌더링 안정화 대기
+      await page.waitForTimeout(500);
 
       // TODO: 스크린샷 파일명 생성 (형식: {websiteId}_{timestamp}.png)
       const timestamp = Date.now();
@@ -136,6 +151,109 @@ export class ScreenshotService {
         await page.close();
       }
       // TODO: 브라우저는 유지 (여러 웹사이트 체크에 재사용)
+    }
+  }
+
+  /**
+   * 한국 공공기관 사이트의 레이어 팝업을 제거합니다
+   * - 고정 위치 오버레이 (position: fixed + 높은 z-index)
+   * - "오늘 하루 안 보기", "닫기" 버튼 자동 클릭
+   * - 팝업 딤(dim) 배경 레이어 제거
+   */
+  private async dismissPopups(page: Page, websiteId: number): Promise<void> {
+    try {
+      /* eslint-disable no-eval */
+      // page.evaluate 내부는 브라우저 컨텍스트에서 실행됨 (DOM API 사용)
+      // 문자열로 전달하여 Node.js TS 컴파일러의 DOM 타입 오류 방지
+      const removedCount = await page.evaluate(`(() => {
+        let removed = 0;
+
+        // 1단계: "오늘 하루 안 보기", "닫기" 등 팝업 닫기 버튼 클릭 시도
+        const closePatterns = [
+          '오늘 하루 안 보기',
+          '오늘하루보지않기',
+          '오늘 하루 보지않기',
+          '오늘 하루 열지 않기',
+          '오늘하루열지않기',
+          '하루동안 보지 않기',
+          '하루 동안 보지 않기',
+          '하루동안 열지 않기',
+          '오늘 그만 보기',
+          '다시 보지 않기',
+          '7일간 보지 않기',
+          '일주일간 보지 않기',
+          '팝업 닫기',
+          '팝업닫기',
+          '창 닫기',
+          '창닫기',
+          '닫기',
+          'CLOSE',
+          'Close',
+          'close',
+        ];
+
+        // 텍스트로 버튼/링크 찾기
+        const allClickables = document.querySelectorAll('a, button, input[type="button"], input[type="submit"], span, div, label');
+        for (const el of allClickables) {
+          const text = (el.textContent || '').trim().replace(/\\s+/g, ' ');
+          const value = el.value || '';
+          const matchText = text + ' ' + value;
+
+          for (const pattern of closePatterns) {
+            if (matchText.includes(pattern)) {
+              try { el.click(); removed++; } catch(e) {}
+              break;
+            }
+          }
+        }
+
+        // 2단계: 고정 위치 오버레이 요소 제거
+        const allElements = document.querySelectorAll('*');
+        for (const el of allElements) {
+          const style = window.getComputedStyle(el);
+          const position = style.position;
+          const zIndex = parseInt(style.zIndex) || 0;
+          const rect = el.getBoundingClientRect();
+
+          const isOverlay = (position === 'fixed' || position === 'absolute') && zIndex >= 900;
+          const coversScreen = rect.width > window.innerWidth * 0.3 && rect.height > window.innerHeight * 0.3;
+          const isDim = (style.backgroundColor.includes('rgba') && parseFloat(style.opacity || '1') < 1) ||
+            (style.backgroundColor.includes('rgb(0, 0, 0)') && parseFloat(style.opacity || '1') < 0.8);
+
+          // 딤(dim) 배경 레이어 제거
+          if (isOverlay && coversScreen && isDim) {
+            el.remove(); removed++; continue;
+          }
+
+          // 팝업 레이어 제거
+          if (isOverlay && coversScreen) {
+            const tag = el.tagName.toLowerCase();
+            if (['body','html','header','nav','main','footer'].includes(tag)) continue;
+
+            const idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
+            const popupKeywords = ['popup','pop-up','pop_up','layer','modal','notice','banner',
+              'overlay','dim','mask','lightbox','alert-box','float-','floating'];
+            if (popupKeywords.some(kw => idClass.includes(kw))) {
+              el.remove(); removed++;
+            }
+          }
+        }
+
+        // 3단계: body overflow 복원 (팝업이 스크롤 잠금한 경우)
+        document.body.style.overflow = '';
+        document.body.style.overflowY = '';
+        document.documentElement.style.overflow = '';
+        document.documentElement.style.overflowY = '';
+
+        return removed;
+      })()`) as number;
+
+      if (removedCount > 0) {
+        logger.info(`[PopupDismiss] Removed ${removedCount} popup elements for website ${websiteId}`);
+      }
+    } catch (error) {
+      // 팝업 제거 실패는 경고만 — 스크린샷 캡처를 중단하지 않음
+      logger.warn(`[PopupDismiss] Failed for website ${websiteId}:`, error);
     }
   }
 
