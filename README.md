@@ -7,7 +7,7 @@
 ## 시스템 구성도
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="KWATCH 시스템 구성도" width="100%">
+  <img src="docs/architecture.png" alt="KWATCH 시스템 구성도" width="100%">
 </p>
 
 <br>
