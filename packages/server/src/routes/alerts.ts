@@ -132,4 +132,71 @@ router.put('/channels/:id', authenticate, authorize('admin'), async (req, res) =
   }
 });
 
+/**
+ * POST /api/alerts/test
+ * 알림 채널 테스트 발송 (admin only)
+ * DB에 alert 레코드를 생성하지 않고 순수 전송 테스트만 수행
+ */
+router.post('/test', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { channelType } = req.body;
+
+    // 테스트용 더미 alert 객체
+    const dummyAlert = {
+      id: BigInt(0),
+      websiteId: 0,
+      alertType: 'DOWN' as const,
+      severity: 'WARNING' as const,
+      message: '[테스트] 알림 채널 테스트 메시지입니다. 이 메시지가 정상적으로 수신되면 채널 설정이 올바릅니다.',
+      isAcknowledged: false,
+      acknowledgedBy: null,
+      acknowledgedAt: null,
+      createdAt: new Date(),
+    };
+    const dummyWebsiteName = 'KWATCH 테스트';
+
+    const results: { channel: string; success: boolean; error?: string }[] = [];
+
+    // 테스트할 채널 목록 조회
+    const whereClause: any = { isActive: true };
+    if (channelType) {
+      whereClause.channelType = channelType;
+    }
+
+    const channels = await prisma.alertChannel.findMany({ where: whereClause });
+
+    if (channels.length === 0) {
+      sendSuccess(res, {
+        message: '활성화된 알림 채널이 없습니다.',
+        results: [],
+      });
+      return;
+    }
+
+    for (const channel of channels) {
+      try {
+        switch (channel.channelType) {
+          case 'EMAIL':
+            await alertService.sendEmail(dummyAlert, dummyWebsiteName, channel.config);
+            break;
+          case 'SLACK':
+            await alertService.sendSlack(dummyAlert, dummyWebsiteName, channel.config);
+            break;
+          case 'TELEGRAM':
+            await alertService.sendTelegram(dummyAlert, dummyWebsiteName, channel.config);
+            break;
+        }
+        results.push({ channel: channel.channelType, success: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        results.push({ channel: channel.channelType, success: false, error: message });
+      }
+    }
+
+    sendSuccess(res, { message: '알림 테스트 완료', results });
+  } catch (error) {
+    sendError(res, 'TEST_ERROR', '알림 테스트 중 오류가 발생했습니다.', 500);
+  }
+});
+
 export default router;

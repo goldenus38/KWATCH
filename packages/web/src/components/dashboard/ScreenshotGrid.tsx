@@ -6,15 +6,16 @@ import { SiteCard } from './SiteCard';
 
 interface ScreenshotGridProps {
   statuses: MonitoringStatus[];
-  currentPage: number;
+  currentPage: number; // 0-indexed
   itemsPerPage: number;
-  onPageChange: (page: number) => void;
+  onPageChange: (page: number) => void; // 0-indexed
   onSiteClick: (websiteId: number) => void;
 }
 
 /**
  * 웹사이트 스크린샷 그리드
  * 반응형 CSS Grid, 비정상 사이트 우선 정렬
+ * currentPage는 0-indexed로 동작
  */
 export function ScreenshotGrid({
   statuses,
@@ -34,15 +35,18 @@ export function ScreenshotGrid({
     return getStatusPriority(a) - getStatusPriority(b);
   });
 
-  // 페이징
-  const totalPages = Math.ceil(sortedStatuses.length / itemsPerPage);
-  const start = (currentPage - 1) * itemsPerPage;
+  // 페이징 (0-indexed)
+  const totalPages = Math.max(1, Math.ceil(sortedStatuses.length / itemsPerPage));
+  const start = currentPage * itemsPerPage;
   const end = start + itemsPerPage;
   const currentItems = sortedStatuses.slice(start, end);
 
   // 빈 공간 채우기 (그리드 레이아웃 완성)
   const emptySlots = itemsPerPage - currentItems.length;
   const emptyArray = Array.from({ length: Math.max(0, emptySlots) }, (_, i) => i);
+
+  // 표시용 페이지 번호 (1-indexed)
+  const displayPage = currentPage + 1;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -91,12 +95,12 @@ export function ScreenshotGrid({
         <div className="bg-kwatch-bg-secondary border-t border-kwatch-bg-tertiary px-6 py-4 flex items-center justify-center gap-3">
           {/* 페이지 텍스트 */}
           <span className="text-dashboard-sm text-kwatch-text-secondary">
-            페이지 {currentPage}/{totalPages}
+            페이지 {displayPage}/{totalPages}
           </span>
 
           {/* 페이지 인디케이터 도트 */}
           <div className="flex gap-2">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            {Array.from({ length: totalPages }, (_, i) => i).map((page) => (
               <button
                 key={page}
                 onClick={() => onPageChange(page)}
@@ -105,7 +109,7 @@ export function ScreenshotGrid({
                     ? 'bg-kwatch-accent w-4'
                     : 'bg-kwatch-bg-tertiary hover:bg-kwatch-text-secondary'
                 }`}
-                aria-label={`페이지 ${page}`}
+                aria-label={`페이지 ${page + 1}`}
               />
             ))}
           </div>

@@ -11,6 +11,7 @@ import type {
   WsStatusUpdate,
   WsAlertNew,
   WsDefacementDetected,
+  WsScreenshotUpdated,
 } from '@/types';
 
 interface UseMonitoringDataReturn {
@@ -41,26 +42,23 @@ export function useMonitoringData(
       setIsLoading(true);
       setError(null);
 
-      // TODO: API 호출 구현
-      // const [summaryRes, statusRes, alertsRes] = await Promise.all([
-      //   api.get<DashboardSummary>('/api/monitoring/status'),
-      //   api.get<MonitoringStatus[]>('/api/monitoring/statuses'),
-      //   api.get<Alert[]>('/api/alerts?limit=20'),
-      // ]);
+      const [summaryRes, statusesRes, alertsRes] = await Promise.all([
+        api.get<DashboardSummary>('/api/monitoring/status'),
+        api.get<MonitoringStatus[]>('/api/monitoring/statuses'),
+        api.get<Alert[]>('/api/alerts?limit=20'),
+      ]);
 
-      // 임시 더미 데이터
-      setSummary({
-        total: 500,
-        up: 487,
-        down: 3,
-        warning: 8,
-        defaced: 2,
-        unknown: 0,
-        lastScanAt: new Date().toISOString(),
-      });
+      if (summaryRes.success && summaryRes.data) {
+        setSummary(summaryRes.data);
+      }
 
-      setStatuses([]);
-      setRecentAlerts([]);
+      if (statusesRes.success && statusesRes.data) {
+        setStatuses(statusesRes.data);
+      }
+
+      if (alertsRes.success && alertsRes.data) {
+        setRecentAlerts(alertsRes.data);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '데이터 로딩 실패');
     } finally {
@@ -116,16 +114,28 @@ export function useMonitoringData(
       );
     };
 
+    const handleScreenshotUpdated = (data: WsScreenshotUpdated) => {
+      setStatuses((prev) =>
+        prev.map((s) =>
+          s.websiteId === data.websiteId
+            ? { ...s, screenshotUrl: data.screenshotUrl }
+            : s,
+        ),
+      );
+    };
+
     socket.on('status:update', handleStatusUpdate);
     socket.on('status:bulk', handleStatusBulk);
     socket.on('alert:new', handleAlertNew);
     socket.on('defacement:detected', handleDefacementDetected);
+    socket.on('screenshot:updated', handleScreenshotUpdated);
 
     return () => {
       socket.off('status:update', handleStatusUpdate);
       socket.off('status:bulk', handleStatusBulk);
       socket.off('alert:new', handleAlertNew);
       socket.off('defacement:detected', handleDefacementDetected);
+      socket.off('screenshot:updated', handleScreenshotUpdated);
     };
   }, []);
 

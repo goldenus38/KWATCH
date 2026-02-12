@@ -240,6 +240,61 @@ export class MonitoringService {
   }
 
   /**
+   * 모든 활성 웹사이트의 상태를 조회합니다
+   * @returns MonitoringStatus 배열
+   */
+  async getAllStatuses(): Promise<MonitoringStatus[]> {
+    try {
+      const websites = await this.prisma.website.findMany({
+        where: { isActive: true },
+        include: {
+          monitoringResults: {
+            orderBy: { checkedAt: 'desc' },
+            take: 1,
+          },
+          screenshots: {
+            orderBy: { capturedAt: 'desc' },
+            take: 1,
+          },
+          defacementChecks: {
+            orderBy: { checkedAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      return websites.map((website) => {
+        const latestResult = website.monitoringResults[0];
+        const latestScreenshot = website.screenshots[0];
+        const latestDefacement = website.defacementChecks[0];
+
+        return {
+          websiteId: website.id,
+          websiteName: website.name,
+          url: website.url,
+          statusCode: latestResult?.statusCode ?? null,
+          responseTimeMs: latestResult?.responseTimeMs ?? null,
+          isUp: latestResult?.isUp ?? false,
+          errorMessage: latestResult?.errorMessage ?? null,
+          checkedAt: latestResult?.checkedAt ?? new Date(),
+          screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
+          defacementStatus: latestDefacement
+            ? {
+                isDefaced: latestDefacement.isDefaced,
+                similarityScore: latestDefacement.similarityScore
+                  ? Number(latestDefacement.similarityScore)
+                  : null,
+              }
+            : null,
+        };
+      });
+    } catch (error) {
+      logger.error('getAllStatuses failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 대시보드용 전체 상태 요약을 조회합니다
    * @returns DashboardSummary {total, up, down, warning, defaced, unknown, lastScanAt}
    */

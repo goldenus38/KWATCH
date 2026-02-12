@@ -19,7 +19,7 @@ import apiRouter from './routes';
 /**
  * Express 앱을 생성하고 초기화합니다
  */
-function createApp(): Express {
+export function createApp(): Express {
   const app = express();
 
   // 신뢰할 수 있는 프록시 설정
@@ -161,5 +161,7 @@ async function startServer(): Promise<void> {
   }
 }
 
-// 서버 시작
-startServer();
+// 서버 시작 (직접 실행 시에만, 테스트에서 import 시 실행 방지)
+if (require.main === module) {
+  startServer();
+}

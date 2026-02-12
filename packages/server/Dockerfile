@@ -38,9 +38,13 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma ./prisma
 
-# Create screenshots directory
-RUN mkdir -p screenshots/current screenshots/baselines screenshots/diffs
+# Create required directories
+RUN mkdir -p screenshots/current screenshots/baselines screenshots/diffs screenshots/thumbnails logs
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3001
 
-CMD ["node", "dist/app.js"]
+ENTRYPOINT ["sh", "docker-entrypoint.sh"]

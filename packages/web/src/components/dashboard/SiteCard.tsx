@@ -16,19 +16,12 @@ interface SiteCardProps {
  */
 export function SiteCard({ data, onClick }: SiteCardProps) {
   // 상태 판정
-  let status: WebsiteStatus = 'unknown';
-  if (!data.isUp) {
-    status = 'critical';
-  } else if (data.defacementStatus?.isDefaced) {
-    status = 'critical';
-  } else if (
-    data.responseTimeMs &&
-    data.responseTimeMs > RESPONSE_TIME_WARNING_MS
-  ) {
-    status = 'warning';
-  } else {
-    status = 'normal';
-  }
+  const status: WebsiteStatus = (() => {
+    if (!data.isUp) return 'critical';
+    if (data.defacementStatus?.isDefaced) return 'critical';
+    if (data.responseTimeMs && data.responseTimeMs > RESPONSE_TIME_WARNING_MS) return 'warning';
+    return 'normal';
+  })();
 
   const colors = STATUS_COLORS[status];
 
@@ -42,7 +35,7 @@ export function SiteCard({ data, onClick }: SiteCardProps) {
         status === 'warning' && 'border-kwatch-status-warning shadow-status-warning',
         status === 'critical' &&
           'border-kwatch-status-critical shadow-status-critical animate-glow',
-        (status === 'normal' || status === 'unknown') && 'border-transparent',
+        status === 'normal' && 'border-transparent',
         'hover:shadow-lg hover:scale-105 active:scale-95',
       )}
     >

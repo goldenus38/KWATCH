@@ -18,6 +18,19 @@ router.get('/status', async (req, res) => {
 });
 
 /**
+ * GET /api/monitoring/statuses
+ * 전체 활성 사이트 상태 목록 (대시보드 그리드용)
+ */
+router.get('/statuses', async (req, res) => {
+  try {
+    const statuses = await monitoringService.getAllStatuses();
+    sendSuccess(res, statuses);
+  } catch (error) {
+    sendError(res, 'STATUSES_ERROR', '전체 상태 목록 조회 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
  * GET /api/monitoring/:websiteId
  * 특정 웹사이트의 모니터링 이력 조회 (페이지네이션)
  */

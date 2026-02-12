@@ -37,9 +37,7 @@ yarn-error.log*
 # Testing
 coverage/
 
-# Prisma
-packages/server/prisma/migrations/*
-!packages/server/prisma/migrations/.gitkeep
+# Prisma (migrations are version-controlled for prisma migrate deploy)
 
 # Screenshots (large files)
 packages/server/screenshots/current/

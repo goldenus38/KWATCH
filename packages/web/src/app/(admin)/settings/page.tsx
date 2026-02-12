@@ -135,7 +135,7 @@ export default function SettingsPage() {
                   <div className="text-sm text-kwatch-text-secondary space-y-1">
                     {/* 채널별 설정 표시 */}
                     {channel.channelType === 'EMAIL' && (
-                      <p>발신자: {channel.config.from || '-'}</p>
+                      <p>발신자: {String(channel.config.from || '-')}</p>
                     )}
                     {channel.channelType === 'SLACK' && (
                       <p>
@@ -146,7 +146,7 @@ export default function SettingsPage() {
                       </p>
                     )}
                     {channel.channelType === 'TELEGRAM' && (
-                      <p>Chat ID: {channel.config.chatId || '-'}</p>
+                      <p>Chat ID: {String(channel.config.chatId || '-')}</p>
                     )}
                   </div>
                 </div>

@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Docker 배포 시 standalone 모드로 빌드
+  output: 'standalone',
+
   // API 프록시 설정
   async rewrites() {
     return [

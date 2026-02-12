@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/types';
 import { formatTime } from '@/lib/utils';
 import { ALERT_TYPE_ICONS, ALERT_TYPE_LABELS } from '@/lib/constants';
@@ -17,6 +17,19 @@ interface AlertTimelineProps {
 export function AlertTimeline({ alerts }: AlertTimelineProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const prevAlertCountRef = useRef(alerts.length);
+
+  // 신규 알림 하이라이트 효과
+  useEffect(() => {
+    if (alerts.length > prevAlertCountRef.current && alerts.length > 0) {
+      const newAlertId = alerts[0].id;
+      setHighlightId(newAlertId);
+      const timer = setTimeout(() => setHighlightId(null), 2000);
+      return () => clearTimeout(timer);
+    }
+    prevAlertCountRef.current = alerts.length;
+  }, [alerts]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -71,6 +84,35 @@ export function AlertTimeline({ alerts }: AlertTimelineProps) {
     }
   };
 
+  const renderAlertItem = (alert: Alert, keyPrefix = '') => (
+    <div
+      key={`${keyPrefix}${alert.id}`}
+      className={`flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-500 ${getSeverityColor(alert.severity)} ${
+        highlightId === alert.id ? 'ring-2 ring-white/50 brightness-150' : ''
+      }`}
+    >
+      {/* 시간 */}
+      <span className="text-dashboard-sm font-mono">
+        {formatTime(alert.createdAt)}
+      </span>
+
+      {/* 아이콘 */}
+      <span className="text-lg">
+        {ALERT_TYPE_ICONS[alert.alertType]}
+      </span>
+
+      {/* 웹사이트명 */}
+      <span className="text-dashboard-sm font-semibold">
+        {alert.websiteName || '알 수 없음'}
+      </span>
+
+      {/* 메시지 */}
+      <span className="text-dashboard-sm text-kwatch-text-secondary">
+        {ALERT_TYPE_LABELS[alert.alertType]}
+      </span>
+    </div>
+  );
+
   return (
     <div className="bg-kwatch-bg-secondary border-t border-kwatch-bg-tertiary">
       <div
@@ -80,61 +122,20 @@ export function AlertTimeline({ alerts }: AlertTimelineProps) {
       >
         <div ref={contentRef} className="flex gap-4 px-6 py-3 whitespace-nowrap">
           {alerts.length > 0 ? (
-            alerts.map((alert) => (
-              <div
-                key={alert.id}
-                className={`flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg ${getSeverityColor(alert.severity)}`}
-              >
-                {/* 시간 */}
-                <span className="text-dashboard-sm font-mono">
-                  {formatTime(alert.createdAt)}
-                </span>
+            <>
+              {alerts.map((alert) => renderAlertItem(alert))}
 
-                {/* 아이콘 */}
-                <span className="text-lg">
-                  {ALERT_TYPE_ICONS[alert.alertType]}
-                </span>
-
-                {/* 웹사이트명 */}
-                <span className="text-dashboard-sm font-semibold">
-                  {alert.websiteName || '알 수 없음'}
-                </span>
-
-                {/* 메시지 */}
-                <span className="text-dashboard-sm text-kwatch-text-secondary">
-                  {ALERT_TYPE_LABELS[alert.alertType]}
-                </span>
-              </div>
-            ))
+              {/* 반복용 복사본 (무한 스크롤 효과) */}
+              {alerts.length > 3 &&
+                alerts.map((alert) => renderAlertItem(alert, 'repeat-'))}
+            </>
           ) : (
             <div className="flex items-center justify-center w-full py-2 text-kwatch-text-muted">
               <span className="text-dashboard-sm">
-                아직 알림이 없습니다
+                모니터링 대기 중...
               </span>
             </div>
           )}
-
-          {/* 반복용 복사본 (무한 스크롤 효과) */}
-          {alerts.length > 3 &&
-            alerts.map((alert) => (
-              <div
-                key={`repeat-${alert.id}`}
-                className={`flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg ${getSeverityColor(alert.severity)}`}
-              >
-                <span className="text-dashboard-sm font-mono">
-                  {formatTime(alert.createdAt)}
-                </span>
-                <span className="text-lg">
-                  {ALERT_TYPE_ICONS[alert.alertType]}
-                </span>
-                <span className="text-dashboard-sm font-semibold">
-                  {alert.websiteName || '알 수 없음'}
-                </span>
-                <span className="text-dashboard-sm text-kwatch-text-secondary">
-                  {ALERT_TYPE_LABELS[alert.alertType]}
-                </span>
-              </div>
-            ))}
         </div>
       </div>
     </div>

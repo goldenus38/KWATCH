@@ -1,0 +1,10 @@
+node_modules
+dist
+.env*
+coverage
+screenshots/*
+logs/
+*.md
+.git
+src/__tests__
+vitest.config.ts
