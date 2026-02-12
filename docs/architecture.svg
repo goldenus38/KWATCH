@@ -163,7 +163,7 @@
   <!-- Screenshot storage -->
   <rect x="265" y="462" width="365" height="52" rx="6" fill="#1a2744" stroke="#475569" stroke-width="0.8"/>
   <text x="447" y="480" text-anchor="middle" fill="#94A3B8" font-size="9" font-weight="500">스크린샷 저장소 (Volume Mount)</text>
-  <text x="280" y="502" fill="#64748B" font-size="8.5">📁 current/ &nbsp; 📁 baselines/ &nbsp; 📁 diffs/ &nbsp; 📁 thumbnails/</text>
+  <text x="280" y="502" fill="#64748B" font-size="8.5">📁 current/ &#160; 📁 baselines/ &#160; 📁 diffs/ &#160; 📁 thumbnails/</text>
 
   <!-- ===== Databases ===== -->
   <!-- PostgreSQL -->
@@ -212,14 +212,14 @@
   <!-- Monitored Websites -->
   <rect x="250" y="665" width="330" height="65" rx="8" fill="url(#cardGrad)" stroke="#475569" stroke-width="1" filter="url(#shadow)"/>
   <text x="415" y="688" text-anchor="middle" fill="#E2E8F0" font-size="11" font-weight="600">관제 대상 웹사이트 (~500개)</text>
-  <text x="265" y="706" fill="#64748B" font-size="9">*.go.kr &nbsp;│&nbsp; *.or.kr &nbsp;│&nbsp; *.ac.kr &nbsp;│&nbsp; *.re.kr &nbsp;│&nbsp; ...</text>
+  <text x="265" y="706" fill="#64748B" font-size="9">*.go.kr &#160;│&#160; *.or.kr &#160;│&#160; *.ac.kr &#160;│&#160; *.re.kr &#160;│&#160; ...</text>
   <text x="265" y="720" fill="#64748B" font-size="9">HTTP/HTTPS 상태 체크 + 스크린샷 + HTML 분석</text>
 
   <!-- Alert Channels -->
   <rect x="600" y="665" width="265" height="65" rx="8" fill="url(#cardGrad)" stroke="#475569" stroke-width="1" filter="url(#shadow)"/>
   <text x="732" y="688" text-anchor="middle" fill="#E2E8F0" font-size="11" font-weight="600">알림 채널</text>
   <text x="615" y="708" fill="#94A3B8" font-size="10">📧 Email (SMTP)</text>
-  <text x="615" y="724" fill="#94A3B8" font-size="10">💬 Slack &nbsp;&nbsp; 📱 Telegram</text>
+  <text x="615" y="724" fill="#94A3B8" font-size="10">💬 Slack &#160;&#160; 📱 Telegram</text>
 
   <!-- Arrows to bottom -->
   <line x1="415" y1="648" x2="415" y2="663" stroke="#475569" stroke-width="1.2" stroke-dasharray="4,2"/>
