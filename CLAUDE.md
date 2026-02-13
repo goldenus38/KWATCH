@@ -755,6 +755,31 @@ v1.0 전체 코드 리뷰 수행 후 9건 수정 완료:
 - `useMonitoringData` 의존성 배열 `[filter]` → `[]` (무한 루프 방지)
 - SiteCard에 `React.memo` 적용 (불필요한 리렌더 방지)
 
+### 코드 리뷰 2차 (2026-02-13)
+
+1차 리뷰 이후 추가 8건 수정:
+
+**타입 안전성 (3건):**
+- `websites.ts`: `const where: any` → `Prisma.WebsiteWhereInput` 타입 적용
+- `socketServer.ts`: `emitDefacementDetected` 파라미터에서 `| any` 제거
+- `types/index.ts`: `WsDefacementDetected.diffImageUrl` 타입을 `string | null`로 수정
+
+**버그 수정 (1건):**
+- `websites.ts` PUT: `checkIntervalSeconds &&` / `timeoutSeconds &&` → `!== undefined` (값이 0일 때 falsy로 무시되는 버그)
+
+**보안 (1건):**
+- `socketServer.ts`: WebSocket CORS `origin: '*'` → 개발환경만 와일드카드, 운영환경은 localhost 제한
+
+**설정 일관성 (1건):**
+- `errorHandler.ts`: `process.env.NODE_ENV === 'production'` → `config.isDev` 사용으로 통일
+
+**접근성/UX (2건):**
+- `StatusIndicator.tsx`: `title`/`aria-label`을 한국어로 변경 (정상/경고/장애/점검 중/알 수 없음)
+- `DetailPopup.tsx`: 베이스라인/차이분석 이미지 `alt`에 웹사이트명 포함, `Promise.allSettled` rejected 시 `console.error` 추가
+
+**React 최적화 (1건):**
+- `ScreenshotGrid.tsx`: 빈 슬롯 key에 페이지 컨텍스트 포함 (`empty-${currentPage}-${i}`)
+
 ### 알려진 이슈
 
 - `korea.go.kr`: SSL 인증서 불일치(`ERR_TLS_CERT_ALTNAME_INVALID`)로 모니터링/스크린샷 불가 (사이트 자체 문제)
