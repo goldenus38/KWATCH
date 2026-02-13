@@ -85,29 +85,34 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
         }
 
         // 스크린샷 작업 큐에 추가 (Redis rate limit으로 주기 제한)
-        try {
-          const redis = getRedisClient();
-          const screenshotInterval = config.monitoring.screenshotInterval;
-          const rateLimitKey = `screenshot:ratelimit:${job.data.websiteId}`;
-          const isLimited = await redis.get(rateLimitKey);
+        // DOWN 사이트는 스크린샷도 실패할 것이 확실하므로 스킵
+        if (!result.isUp) {
+          logger.debug(`[MonitoringWorker] Skipping screenshot for DOWN website ${job.data.websiteId}`);
+        } else {
+          try {
+            const redis = getRedisClient();
+            const screenshotInterval = config.monitoring.screenshotInterval;
+            const rateLimitKey = `screenshot:ratelimit:${job.data.websiteId}`;
+            const isLimited = await redis.get(rateLimitKey);
 
-          if (!isLimited) {
-            await redis.set(rateLimitKey, '1', 'EX', screenshotInterval);
-            await schedulerService.enqueueScreenshot(
-              {
-                id: job.data.websiteId,
-                url: job.data.url,
-              },
-              false,
+            if (!isLimited) {
+              await redis.set(rateLimitKey, '1', 'EX', screenshotInterval);
+              await schedulerService.enqueueScreenshot(
+                {
+                  id: job.data.websiteId,
+                  url: job.data.url,
+                },
+                false,
+              );
+              logger.debug(`[MonitoringWorker] Screenshot job enqueued for website ${job.data.websiteId}`);
+            }
+          } catch (error) {
+            logger.warn(
+              `[MonitoringWorker] Failed to enqueue screenshot for website ${job.data.websiteId}:`,
+              error,
             );
-            logger.debug(`[MonitoringWorker] Screenshot job enqueued for website ${job.data.websiteId}`);
+            // 스크린샷 큐 등록 실패는 경고만 하고 계속 진행
           }
-        } catch (error) {
-          logger.warn(
-            `[MonitoringWorker] Failed to enqueue screenshot for website ${job.data.websiteId}:`,
-            error,
-          );
-          // 스크린샷 큐 등록 실패는 경고만 하고 계속 진행
         }
 
         return {

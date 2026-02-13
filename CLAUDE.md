@@ -528,7 +528,7 @@ NODE_ENV=development
 SCREENSHOT_DIR=./screenshots
 SCREENSHOT_VIEWPORT_WIDTH=1920
 SCREENSHOT_VIEWPORT_HEIGHT=1080
-SCREENSHOT_TIMEOUT=30000
+SCREENSHOT_TIMEOUT=15000
 
 # Monitoring
 DEFAULT_CHECK_INTERVAL=300
@@ -744,7 +744,7 @@ volumes:
 - **최종 리다이렉트 URL 기록**: `finalUrl` 필드로 `response.url` 저장 (DB `monitoring_results.final_url` 컬럼), DetailPopup에서 요청 URL과 다를 때 최종 URL 표시
 - **대시보드 기관명 표시**: SiteCard/DetailPopup에서 `organizationName`이 있으면 "기관명 사이트명" 형식으로 표시, MonitoringStatus API 응답에 `organizationName` 필드 추가
 - **관리 페이지 컬럼 순서 변경**: 카테고리→기관명→사이트명→URL 순서로 가독성 개선
-- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 57개, HtmlAnalysisService 29개 포함)
+- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 73개, HtmlAnalysisService 29개 포함)
 - **위변조 탐지 분석 UI** (Phase 7):
   - DetailPopup: "베이스라인 비교" → "위변조 탐지 분석"으로 교체
     - 탐지 방식 뱃지 (하이브리드/픽셀 전용), 종합 유사도 점수 헤더
@@ -779,7 +779,7 @@ STAGGER_WINDOW_SECONDS=60    # 기본 60초 (5분 내 전체 사이클 달성)
 
 # 워커 동시 처리 수 (사이트 수에 따라 조정)
 MONITORING_CONCURRENCY=20    # HTTP 체크 동시 처리 (기본 20)
-SCREENSHOT_CONCURRENCY=10    # 스크린샷 캡처 동시 처리 (기본 10, 메모리 집약적)
+SCREENSHOT_CONCURRENCY=15    # 스크린샷 캡처 동시 처리 (기본 15, 메모리 집약적)
 DEFACEMENT_CONCURRENCY=8     # 위변조 분석 동시 처리 (기본 8, CPU 집약적)
 ```
 
@@ -788,7 +788,7 @@ DEFACEMENT_CONCURRENCY=8     # 위변조 분석 동시 처리 (기본 8, CPU 집
 | 환경변수 | 500개 | 1000개 | 근거 |
 |---------|-------|--------|------|
 | `MONITORING_CONCURRENCY` | 20 | 20 | 1000÷20×1s=50s < 60s interval |
-| `SCREENSHOT_CONCURRENCY` | 10 | 10 | 메모리 ~1.5-2GB (10 Playwright 페이지) |
+| `SCREENSHOT_CONCURRENCY` | 15 | 15 | 메모리 ~1.5-2GB (15 Playwright 페이지) |
 | `DEFACEMENT_CONCURRENCY` | 8 | 8 | CPU-bound, 8이면 충분 |
 
 **Thundering Herd 방지:**
@@ -798,9 +798,14 @@ DEFACEMENT_CONCURRENCY=8     # 위변조 분석 동시 처리 (기본 8, CPU 집
 
 **스크린샷 전체 사이클 5분 이내 최적화:**
 - Stagger 윈도우를 `checkIntervalSeconds`(300초)에서 60초 고정으로 축소 → 240초 절약
-- Playwright `waitForTimeout(3000)` → `1000`으로 축소 (networkidle이 네트워크 안정 보장)
+- Playwright `waitForTimeout(3000)` → `1000`으로 축소
 - 팝업 제거 후 `waitForTimeout(500)` 제거 (동기 DOM 조작이므로 불필요)
-- 예상 소요시간: 508사이트 기준 ~4분 (60초 stagger + 508/10 × 3.5초 캡처)
+- `waitUntil: 'networkidle'` → `'load'` 변경 (이미지/CSS/JS 리소스 로드까지 대기하되 네트워크 유휴 대기 없음, SPA 사이트 렌더링 보장)
+- DOWN 사이트 스크린샷 스킵 (모니터링에서 DOWN 판정된 사이트는 스크린샷 큐에 추가하지 않음)
+- 스크린샷 타임아웃 30s → 15s 축소 (load 이벤트 방식에서 정상 사이트는 5s 내 로드)
+- 스크린샷 재시도 3회 → 1회 (다음 모니터링 사이클에서 자연 재시도)
+- 스크린샷 concurrency 10 → 15 증가 (~1.5GB 메모리, server 4GB 제한 내)
+- 예상 소요시간: 503사이트 기준 ~2분 ((400×3 + 50×15) / 15 ≈ 130s)
 
 ### 코드 리뷰 (2026-02-13)
 

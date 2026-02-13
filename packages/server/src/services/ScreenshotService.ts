@@ -90,11 +90,13 @@ export class ScreenshotService {
       // window.open 팝업 차단 (네비게이션 전에 주입)
       await page.addInitScript('window.open = () => null;');
 
-      // TODO: URL로 네비게이션 (waitUntil: 'networkidle' 권장)
+      // TODO: URL로 네비게이션
       // TODO: 페이지 로딩 실패 시 에러 처리
-      await page.goto(url, { waitUntil: 'networkidle', timeout: config.screenshot.timeout });
+      // load: 이미지/CSS/JS 리소스 로드까지 대기하되 네트워크 유휴 대기 없음
+      // networkidle보다 빠르고, domcontentloaded보다 SPA 렌더링 안정적
+      await page.goto(url, { waitUntil: 'load', timeout: config.screenshot.timeout });
 
-      // 페이지 로드 후 추가 대기 (networkidle이 네트워크 안정을 보장하므로 최소한만)
+      // DOM 로드 후 JS 렌더링 완료 대기
       await page.waitForTimeout(1000);
 
       // 레이어 팝업 제거 (한국 공공기관 사이트 대응)

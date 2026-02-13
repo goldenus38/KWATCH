@@ -218,11 +218,7 @@ export class SchedulerService {
         priority: immediate ? 1 : 10, // 낮은 숫자 = 높은 우선순위
         removeOnComplete: true,
         removeOnFail: false,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        attempts: 3,
+        attempts: 1, // 재시도 없음 (다음 모니터링 사이클에서 자연 재시도)
       });
 
       logger.debug(`Screenshot job enqueued for website ${website.id}`);

@@ -27,7 +27,7 @@ export const config = {
     dir: process.env.SCREENSHOT_DIR || './screenshots',
     viewportWidth: parseInt(process.env.SCREENSHOT_VIEWPORT_WIDTH || '1920', 10),
     viewportHeight: parseInt(process.env.SCREENSHOT_VIEWPORT_HEIGHT || '1080', 10),
-    timeout: parseInt(process.env.SCREENSHOT_TIMEOUT || '30000', 10),
+    timeout: parseInt(process.env.SCREENSHOT_TIMEOUT || '15000', 10),
   },
 
   // Monitoring
@@ -38,7 +38,7 @@ export const config = {
     screenshotInterval: parseInt(process.env.SCREENSHOT_INTERVAL || '300', 10), // 스크린샷 캡처 주기 (초, 기본 5분)
     defacementInterval: parseInt(process.env.DEFACEMENT_INTERVAL || '600', 10), // 위변조 체크 주기 (초, 기본 10분)
     monitoringConcurrency: parseInt(process.env.MONITORING_CONCURRENCY || '20', 10),
-    screenshotConcurrency: parseInt(process.env.SCREENSHOT_CONCURRENCY || '10', 10),
+    screenshotConcurrency: parseInt(process.env.SCREENSHOT_CONCURRENCY || '15', 10),
     defacementConcurrency: parseInt(process.env.DEFACEMENT_CONCURRENCY || '8', 10),
     staggerWindowSeconds: parseInt(process.env.STAGGER_WINDOW_SECONDS || '60', 10),
     hybridWeights: {
