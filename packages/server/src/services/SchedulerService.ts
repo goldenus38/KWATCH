@@ -81,11 +81,35 @@ export class SchedulerService {
   }
 
   /**
+   * 특정 큐에서 해당 웹사이트의 대기/지연 중인 개별 작업을 모두 제거합니다
+   * repeatable job이 이미 큐잉한 작업이 남아 있을 수 있으므로, 스케줄 변경 시 함께 정리
+   */
+  private async removePendingJobs(queue: Queue, websiteId: number): Promise<number> {
+    let removed = 0;
+    const states: ('waiting' | 'delayed')[] = ['waiting', 'delayed'];
+    for (const state of states) {
+      const jobs = await queue.getJobs([state]);
+      for (const job of jobs) {
+        if (job.data?.websiteId === websiteId) {
+          try {
+            await job.remove();
+            removed++;
+          } catch {
+            // 이미 처리 중이면 무시
+          }
+        }
+      }
+    }
+    return removed;
+  }
+
+  /**
    * 특정 웹사이트의 모니터링을 스케줄합니다
    * @param website 웹사이트 정보 {id, url, timeoutSeconds, checkIntervalSeconds}
    * @param initialDelayMs 첫 실행까지 지연 시간 (ms, staggered scheduling용)
+   * @param cleanPendingJobs 대기 중인 개별 작업도 정리할지 여부 (URL 변경 시 true, 대량 스케줄링 시 false)
    */
-  async scheduleMonitoring(website: any, initialDelayMs: number = 0): Promise<void> {
+  async scheduleMonitoring(website: any, initialDelayMs: number = 0, cleanPendingJobs: boolean = true): Promise<void> {
     try {
       if (!this.monitoringQueue) {
         throw new Error('Monitoring queue not initialized');
@@ -96,6 +120,14 @@ export class SchedulerService {
       for (const job of existingJobs) {
         if (job.key.includes(`monitoring:${website.id}`)) {
           await this.monitoringQueue.removeRepeatableByKey(job.key);
+        }
+      }
+
+      // 기존 대기/지연 작업도 제거 (이전 URL로 큐잉된 작업 정리, 대량 스케줄링 시 스킵)
+      if (cleanPendingJobs) {
+        const removed = await this.removePendingJobs(this.monitoringQueue, website.id);
+        if (removed > 0) {
+          logger.info(`Removed ${removed} pending monitoring jobs for website ${website.id}`);
         }
       }
 
@@ -133,12 +165,16 @@ export class SchedulerService {
 
   /**
    * 단일 모니터링 체크 작업을 큐에 즉시 추가합니다 (수동 새로고침용)
+   * 기존 대기 작업을 제거한 후 최신 URL로 즉시 실행
    */
   async enqueueMonitoringCheck(website: any): Promise<void> {
     try {
       if (!this.monitoringQueue) {
         throw new Error('Monitoring queue not initialized');
       }
+
+      // 기존 대기 작업 제거 (이전 URL로 큐잉된 작업이 먼저 실행되는 것 방지)
+      await this.removePendingJobs(this.monitoringQueue, website.id);
 
       await this.monitoringQueue.add(
         `monitoring:manual:${website.id}`,
@@ -179,7 +215,7 @@ export class SchedulerService {
         const website = websites[i];
         // 첫 실행을 stagger 윈도우 내에 균등 분산 (thundering herd 방지)
         const staggerDelayMs = Math.floor((i / total) * staggerWindowMs);
-        await this.scheduleMonitoring(website, staggerDelayMs);
+        await this.scheduleMonitoring(website, staggerDelayMs, false);
       }
 
       logger.info(`All ${total} websites scheduled for monitoring (staggered over ${config.monitoring.staggerWindowSeconds}s)`);
@@ -207,12 +243,16 @@ export class SchedulerService {
       for (const queue of queues) {
         if (!queue) continue;
 
+        // repeatable job 제거
         const repeatableJobs = await queue.getRepeatableJobs();
         for (const job of repeatableJobs) {
           if (job.key.includes(`${websiteId}`)) {
             await queue.removeRepeatableByKey(job.key);
           }
         }
+
+        // 대기/지연 중인 개별 작업도 제거
+        await this.removePendingJobs(queue, websiteId);
       }
 
       logger.info(`Schedule removed for website ${websiteId}`);

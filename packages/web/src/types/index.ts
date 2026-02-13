@@ -128,6 +128,7 @@ export interface DashboardSummary {
   defaced: number;
   unknown: number;
   lastScanAt: string | null;
+  responseTimeWarningMs?: number;
 }
 
 // ============================================

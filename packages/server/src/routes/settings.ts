@@ -50,6 +50,7 @@ router.get('/monitoring', authenticate, async (req, res) => {
       },
       screenshotInterval: config.monitoring.screenshotInterval,
       defacementInterval: config.monitoring.defacementInterval,
+      responseTimeWarningMs: config.monitoring.responseTimeWarningMs,
     });
   } catch (error) {
     logger.error('모니터링 설정 조회 오류:', error);
@@ -181,6 +182,90 @@ router.put('/monitoring/defacement-interval', authenticate, authorize('admin'), 
   } catch (error) {
     logger.error('위변조 체크 주기 변경 오류:', error);
     sendError(res, 'UPDATE_ERROR', '위변조 체크 주기 변경 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
+ * PUT /api/settings/monitoring/response-time-threshold
+ * 응답 시간 경고 임계값 변경
+ * Body: { responseTimeWarningMs: number }
+ */
+router.put('/monitoring/response-time-threshold', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { responseTimeWarningMs } = req.body;
+
+    if (responseTimeWarningMs === undefined || typeof responseTimeWarningMs !== 'number') {
+      sendError(res, 'INVALID_INPUT', '응답 시간 경고 임계값(ms)을 입력해주세요.', 400);
+      return;
+    }
+
+    if (responseTimeWarningMs < 1000 || responseTimeWarningMs > 60000) {
+      sendError(res, 'INVALID_INPUT', '응답 시간 경고 임계값은 1000ms~60000ms 사이여야 합니다.', 400);
+      return;
+    }
+
+    (config.monitoring as any).responseTimeWarningMs = Math.round(responseTimeWarningMs);
+
+    logger.info(`응답 시간 경고 임계값 변경: ${responseTimeWarningMs}ms`);
+
+    sendSuccess(res, {
+      responseTimeWarningMs: config.monitoring.responseTimeWarningMs,
+      message: `응답 시간 경고 임계값이 ${responseTimeWarningMs}ms로 변경되었습니다.`,
+    });
+  } catch (error) {
+    logger.error('응답 시간 경고 임계값 변경 오류:', error);
+    sendError(res, 'UPDATE_ERROR', '응답 시간 경고 임계값 변경 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
+ * POST /api/settings/monitoring/persist
+ * 현재 모니터링 설정을 .env 파일에 저장
+ */
+router.post('/monitoring/persist', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    let envContent = '';
+    try {
+      envContent = fs.readFileSync(ENV_PATH, 'utf-8');
+    } catch {
+      const examplePath = path.resolve(__dirname, '../../../../.env.example');
+      try {
+        envContent = fs.readFileSync(examplePath, 'utf-8');
+      } catch {
+        // .env.example도 없으면 빈 문자열로 시작
+      }
+    }
+
+    const updates: Record<string, string> = {
+      RESPONSE_TIME_WARNING_MS: String(config.monitoring.responseTimeWarningMs),
+    };
+
+    const lines = envContent.split('\n');
+    const existingKeys = new Set<string>();
+
+    const updatedLines = lines.map((line) => {
+      const match = line.match(/^([A-Z_]+)=/);
+      if (match && updates[match[1]] !== undefined) {
+        existingKeys.add(match[1]);
+        return `${match[1]}=${updates[match[1]]}`;
+      }
+      return line;
+    });
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (!existingKeys.has(key)) {
+        updatedLines.push(`${key}=${value}`);
+      }
+    }
+
+    fs.writeFileSync(ENV_PATH, updatedLines.join('\n'));
+
+    logger.info('.env 파일에 모니터링 설정 저장 완료');
+
+    sendSuccess(res, { message: '.env 파일에 설정이 저장되었습니다.' });
+  } catch (error) {
+    logger.error('.env 파일 저장 오류:', error);
+    sendError(res, 'PERSIST_ERROR', '.env 파일 저장 중 오류가 발생했습니다.', 500);
   }
 });
 

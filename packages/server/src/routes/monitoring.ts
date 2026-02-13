@@ -4,6 +4,7 @@ import { monitoringService } from '../services/MonitoringService';
 import { schedulerService } from '../services/SchedulerService';
 import { authenticate } from '../middleware/auth';
 import { getDbClient } from '../config/database';
+import { config } from '../config';
 
 const router = Router();
 
@@ -14,7 +15,10 @@ const router = Router();
 router.get('/status', async (req, res) => {
   try {
     const summary = await monitoringService.getDashboardSummary();
-    sendSuccess(res, summary);
+    sendSuccess(res, {
+      ...summary,
+      responseTimeWarningMs: config.monitoring.responseTimeWarningMs,
+    });
   } catch (error) {
     sendError(res, 'STATUS_ERROR', '모니터링 상태 조회 중 오류가 발생했습니다.', 500);
   }

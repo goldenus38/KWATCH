@@ -3,25 +3,26 @@
 import React, { useState } from 'react';
 import { MonitoringStatus, WebsiteStatus } from '@/types';
 import { formatResponseTime, cn, truncate } from '@/lib/utils';
-import { STATUS_COLORS, RESPONSE_TIME_WARNING_MS, API_BASE_URL } from '@/lib/constants';
+import { STATUS_COLORS, API_BASE_URL } from '@/lib/constants';
 import { StatusIndicator } from './StatusIndicator';
 
 interface SiteCardProps {
   data: MonitoringStatus;
   onClick: () => void;
+  responseTimeWarningMs?: number;
 }
 
 /**
  * 개별 웹사이트 카드 컴포넌트 (컴팩트 버전)
  * 그리드 셀에 꽉 차도록 h-full 사용
  */
-export const SiteCard = React.memo(function SiteCard({ data, onClick }: SiteCardProps) {
+export const SiteCard = React.memo(function SiteCard({ data, onClick, responseTimeWarningMs = 10000 }: SiteCardProps) {
   const [imgError, setImgError] = useState(false);
   const status: WebsiteStatus = (() => {
     if (!data.isUp) return 'critical';
     if (data.defacementStatus?.isDefaced) return 'critical';
     // isUp=true인 경우만 응답시간 경고 (실패 시 responseTimeMs는 타임아웃 소요시간이므로 무의미)
-    if (data.isUp && data.responseTimeMs && data.responseTimeMs > RESPONSE_TIME_WARNING_MS) return 'warning';
+    if (data.isUp && data.responseTimeMs && data.responseTimeMs > responseTimeWarningMs) return 'warning';
     return 'normal';
   })();
 

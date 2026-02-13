@@ -18,6 +18,7 @@ interface UseMonitoringDataReturn {
   summary: DashboardSummary | null;
   statuses: MonitoringStatus[];
   recentAlerts: Alert[];
+  responseTimeWarningMs: number;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -27,6 +28,7 @@ interface UseMonitoringDataReturn {
 let cachedSummary: DashboardSummary | null = null;
 let cachedStatuses: MonitoringStatus[] = [];
 let cachedAlerts: Alert[] = [];
+let cachedResponseTimeWarningMs = 10000;
 
 /**
  * 모니터링 데이터 구독 훅
@@ -41,6 +43,7 @@ export function useMonitoringData(
   const [summary, setSummary] = useState<DashboardSummary | null>(cachedSummary);
   const [statuses, setStatuses] = useState<MonitoringStatus[]>(cachedStatuses);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>(cachedAlerts);
+  const [responseTimeWarningMs, setResponseTimeWarningMs] = useState(cachedResponseTimeWarningMs);
   const [isLoading, setIsLoading] = useState(!hasCached);
   const [error, setError] = useState<string | null>(null);
   const fetchingRef = useRef(false);
@@ -65,6 +68,10 @@ export function useMonitoringData(
       if (summaryRes.success && summaryRes.data) {
         setSummary(summaryRes.data);
         cachedSummary = summaryRes.data;
+        if (summaryRes.data.responseTimeWarningMs) {
+          setResponseTimeWarningMs(summaryRes.data.responseTimeWarningMs);
+          cachedResponseTimeWarningMs = summaryRes.data.responseTimeWarningMs;
+        }
       }
 
       if (statusesRes.success && statusesRes.data) {
@@ -186,6 +193,7 @@ export function useMonitoringData(
     summary,
     statuses,
     recentAlerts,
+    responseTimeWarningMs,
     isLoading,
     error,
     refetch: () => fetchData(false),

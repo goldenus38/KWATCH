@@ -65,7 +65,7 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
             severity: 'CRITICAL',
             message: `웹사이트 접속 불가 - ${result.errorMessage || `HTTP ${result.statusCode}`}`,
           });
-        } else if (result.responseTimeMs > 3000) {
+        } else if (result.responseTimeMs > config.monitoring.responseTimeWarningMs) {
           await alertService.createAlert({
             websiteId: job.data.websiteId,
             alertType: 'SLOW',
@@ -97,13 +97,20 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
 
             if (!isLimited) {
               await redis.set(rateLimitKey, '1', 'EX', screenshotInterval);
-              await schedulerService.enqueueScreenshot(
-                {
-                  id: job.data.websiteId,
-                  url: job.data.url,
-                },
-                false,
-              );
+              // DB에서 최신 URL 조회 (URL 변경 시 큐 job의 이전 URL 사용 방지)
+              const freshWebsite = await prisma.website.findUnique({
+                where: { id: job.data.websiteId },
+                select: { id: true, url: true },
+              });
+              if (freshWebsite) {
+                await schedulerService.enqueueScreenshot(
+                  {
+                    id: freshWebsite.id,
+                    url: freshWebsite.url,
+                  },
+                  false,
+                );
+              }
               logger.debug(`[MonitoringWorker] Screenshot job enqueued for website ${job.data.websiteId}`);
             }
           } catch (error) {

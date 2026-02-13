@@ -12,6 +12,7 @@ interface ScreenshotGridProps {
   totalPages: number;
   onSiteClick: (websiteId: number) => void;
   onPageChange: (page: number) => void;
+  responseTimeWarningMs?: number;
 }
 
 /**
@@ -27,6 +28,7 @@ export function ScreenshotGrid({
   totalPages,
   onSiteClick,
   onPageChange,
+  responseTimeWarningMs = 10000,
 }: ScreenshotGridProps) {
   // 상태별 정렬 (비정상이 먼저 나타남)
   const sortedStatuses = useMemo(() => {
@@ -34,13 +36,13 @@ export function ScreenshotGrid({
       const getStatusPriority = (status: MonitoringStatus): number => {
         if (status.defacementStatus?.isDefaced) return 0; // 위변조: 최우선
         if (!status.isUp) return 1; // 장애: 다음
-        if (status.isUp && status.responseTimeMs && status.responseTimeMs > 3000) return 2; // 경고
+        if (status.isUp && status.responseTimeMs && status.responseTimeMs > responseTimeWarningMs) return 2; // 경고
         return 3; // 정상: 마지막
       };
       const priorityDiff = getStatusPriority(a) - getStatusPriority(b);
       return priorityDiff !== 0 ? priorityDiff : a.websiteId - b.websiteId;
     });
-  }, [statuses]);
+  }, [statuses, responseTimeWarningMs]);
 
   // 페이지별로 아이템 분할
   const pages = useMemo(() => {
@@ -103,6 +105,7 @@ export function ScreenshotGrid({
             key={status.websiteId}
             data={status}
             onClick={() => onSiteClick(status.websiteId)}
+            responseTimeWarningMs={responseTimeWarningMs}
           />
         ))}
         {Array.from(

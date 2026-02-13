@@ -16,6 +16,7 @@ export default function DashboardPage() {
     summary,
     statuses,
     recentAlerts,
+    responseTimeWarningMs,
     isLoading,
     error,
     refetch,
@@ -30,10 +31,10 @@ export default function DashboardPage() {
     return statuses.filter((s) => {
       switch (statusFilter) {
         case 'up':
-          return s.isUp && !s.defacementStatus?.isDefaced && (s.responseTimeMs == null || s.responseTimeMs <= 3000);
+          return s.isUp && !s.defacementStatus?.isDefaced && (s.responseTimeMs == null || s.responseTimeMs <= responseTimeWarningMs);
         case 'warning':
           // 정상 응답이지만 느린 경우만 (isUp=true 필수)
-          return s.isUp && !s.defacementStatus?.isDefaced && s.responseTimeMs != null && s.responseTimeMs > 3000;
+          return s.isUp && !s.defacementStatus?.isDefaced && s.responseTimeMs != null && s.responseTimeMs > responseTimeWarningMs;
         case 'down':
           return !s.isUp;
         case 'defaced':
@@ -42,7 +43,7 @@ export default function DashboardPage() {
           return true;
       }
     });
-  }, [statuses, statusFilter]);
+  }, [statuses, statusFilter, responseTimeWarningMs]);
 
   const itemsPerPage = DEFAULT_ITEMS_PER_PAGE;
   const totalPages = Math.max(1, Math.ceil(filteredStatuses.length / itemsPerPage));
@@ -136,6 +137,7 @@ export default function DashboardPage() {
             totalPages={totalPages}
             onSiteClick={handleSiteClick}
             onPageChange={setCurrentPage}
+            responseTimeWarningMs={responseTimeWarningMs}
           />
         )}
       </div>

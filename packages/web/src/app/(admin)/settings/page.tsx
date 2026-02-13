@@ -15,11 +15,14 @@ export default function SettingsPage() {
 
   // 모니터링 설정
   const [checkInterval, setCheckInterval] = useState(300);
+  const [responseTimeWarning, setResponseTimeWarning] = useState(10000);
   const [monitoringStats, setMonitoringStats] = useState<{
     totalWebsites: number;
     checkInterval: { avg: number; min: number; max: number; mode: number };
+    responseTimeWarningMs?: number;
   } | null>(null);
   const [isSavingInterval, setIsSavingInterval] = useState(false);
+  const [isSavingResponseTime, setIsSavingResponseTime] = useState(false);
 
   // 위변조 탐지 설정
   const [defacementConfig, setDefacementConfig] = useState<DefacementConfig | null>(null);
@@ -153,11 +156,15 @@ export default function SettingsPage() {
       const response = await api.get<{
         totalWebsites: number;
         checkInterval: { avg: number; min: number; max: number; mode: number };
+        responseTimeWarningMs?: number;
       }>('/api/settings/monitoring');
 
       if (response.success && response.data) {
         setMonitoringStats(response.data);
         setCheckInterval(response.data.checkInterval.mode);
+        if (response.data.responseTimeWarningMs) {
+          setResponseTimeWarning(response.data.responseTimeWarningMs);
+        }
       }
     } catch (err) {
       console.error('Error fetching monitoring settings:', err);
@@ -209,7 +216,7 @@ export default function SettingsPage() {
     }
   };
 
-  // 위변조 탐지 설정 저장
+  // 위변조 탐지 설정 적용
   const handleSaveDefacement = async () => {
     setIsSavingDefacement(true);
     setError(null);
@@ -461,6 +468,90 @@ export default function SettingsPage() {
           >
             {isSavingInterval ? '적용 중...' : '체크 주기 적용'}
           </button>
+
+          {/* 응답 시간 경고 임계값 */}
+          <div className="border-t border-kwatch-bg-tertiary pt-6">
+            <label className="block text-sm font-medium text-kwatch-text-primary mb-2">
+              응답 시간 경고 임계값 (ms)
+            </label>
+            <div className="flex items-center gap-4">
+              <input
+                type="number"
+                value={responseTimeWarning}
+                onChange={(e) => setResponseTimeWarning(Math.max(1000, Math.min(60000, parseInt(e.target.value) || 1000)))}
+                min="1000"
+                max="60000"
+                step="1000"
+                className="w-32 px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+              />
+              <div className="flex gap-2">
+                {[3000, 5000, 10000, 15000, 30000].map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => setResponseTimeWarning(val)}
+                    className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                      responseTimeWarning === val
+                        ? 'bg-kwatch-accent text-white'
+                        : 'bg-kwatch-bg-primary border border-kwatch-bg-tertiary text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary'
+                    }`}
+                  >
+                    {val / 1000}초
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-kwatch-text-muted mt-2">
+              응답 시간이 이 값을 초과하면 경고(warning) 상태로 표시됩니다.
+            </p>
+          </div>
+
+          <button
+            onClick={async () => {
+              setIsSavingResponseTime(true);
+              setError(null);
+              setSuccessMessage(null);
+              try {
+                const response = await api.put<{ responseTimeWarningMs: number; message: string }>(
+                  '/api/settings/monitoring/response-time-threshold',
+                  { responseTimeWarningMs: responseTimeWarning },
+                );
+                if (response.success && response.data) {
+                  setSuccessMessage(response.data.message);
+                  fetchMonitoringSettings();
+
+                  const shouldPersist = window.confirm(
+                    '런타임에 설정이 적용되었습니다.\n\n' +
+                    '.env 파일에도 저장하고 서버를 재시작하시겠습니까?\n' +
+                    '(아니오 선택 시 런타임에만 적용되며, 서버 재시작 시 이전 값으로 복원됩니다.)'
+                  );
+
+                  if (shouldPersist) {
+                    const persistRes = await api.post<{ message: string }>('/api/settings/monitoring/persist', {});
+                    if (persistRes.success) {
+                      setIsRestarting(true);
+                      setRestartStatus('.env 저장 완료. 서버 재시작 요청 중...');
+                      await api.post('/api/settings/server/restart', {});
+                      startHealthPolling();
+                    } else {
+                      setError(persistRes.error?.message || '.env 파일 저장에 실패했습니다.');
+                    }
+                  } else {
+                    setTimeout(() => setSuccessMessage(null), 3000);
+                  }
+                } else {
+                  setError(response.error?.message || '응답 시간 경고 임계값 변경에 실패했습니다.');
+                }
+              } catch (err) {
+                setError('서버 통신 중 오류가 발생했습니다.');
+              } finally {
+                setIsSavingResponseTime(false);
+              }
+            }}
+            disabled={isSavingResponseTime}
+            className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors"
+          >
+            {isSavingResponseTime ? '적용 중...' : '경고 임계값 적용'}
+          </button>
         </div>
       </div>
 
@@ -584,7 +675,7 @@ export default function SettingsPage() {
               disabled={isSavingDefacement}
               className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors"
             >
-              {isSavingDefacement ? '저장 중...' : '위변조 설정 저장'}
+              {isSavingDefacement ? '적용 중...' : '위변조 설정 적용'}
             </button>
           </div>
         </div>

@@ -344,7 +344,7 @@ export class MonitoringService {
 
         if (isDown) {
           down++;
-        } else if (latestResult.isUp && latestResult.responseTimeMs && latestResult.responseTimeMs > 3000) {
+        } else if (latestResult.isUp && latestResult.responseTimeMs && latestResult.responseTimeMs > config.monitoring.responseTimeWarningMs) {
           // 정상 응답이지만 느린 경우만 경고 (실패 시 responseTimeMs는 타임아웃 소요시간이므로 제외)
           warning++;
         } else {

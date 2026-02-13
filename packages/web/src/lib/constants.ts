@@ -19,7 +19,7 @@ export const SCREENSHOT_WIDTH = 1920;
 export const SCREENSHOT_HEIGHT = 1080;
 
 // 상태 임계값
-export const RESPONSE_TIME_WARNING_MS = 3000; // 3초 이상 경고
+export const RESPONSE_TIME_WARNING_MS = 10000; // 10초 이상 경고
 export const DEFACEMENT_THRESHOLD = 85; // 유사도 85% 미만 위변조
 
 // 상태별 색상 매핑

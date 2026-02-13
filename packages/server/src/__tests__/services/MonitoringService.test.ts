@@ -89,10 +89,10 @@ describe('MonitoringService', () => {
           ],
           defacementChecks: [],
         },
-        // warning (slow) site
+        // warning (slow) site — responseTimeMs > 10000 (default threshold)
         {
           id: 3, isActive: true, organizationName: null,
-          monitoringResults: [{ isUp: true, responseTimeMs: 5000, checkedAt: now, finalUrl: 'https://c.com/redirected' }],
+          monitoringResults: [{ isUp: true, responseTimeMs: 15000, checkedAt: now, finalUrl: 'https://c.com/redirected' }],
           defacementChecks: [],
         },
         // defaced site (3 consecutive detections required)
