@@ -357,6 +357,16 @@ GET    /api/alerts/channels                 # 알림 채널 설정 조회
 PUT    /api/alerts/channels/:id             # 알림 채널 설정 수정
 ```
 
+### 설정
+
+```
+GET    /api/settings/monitoring             # 모니터링 설정 조회
+PUT    /api/settings/monitoring/check-interval      # HTTP 체크 주기 일괄 변경
+PUT    /api/settings/monitoring/screenshot-interval  # 스크린샷 주기 변경
+PUT    /api/settings/monitoring/defacement-interval   # 위변조 체크 주기 변경
+GET    /api/settings/defacement             # 위변조 탐지 설정 조회 (읽기 전용, 환경변수 기반)
+```
+
 ### WebSocket 이벤트
 
 ```
@@ -485,7 +495,7 @@ const isDefaced = similarityScore < defacementThreshold;
 - 상태 표시등 (녹/노/빨 dot)
 - 응답 시간 (ms)
 - 카드 테두리 색상으로 상태 표현 (정상: 투명, 경고: 노란 border, 장애: 빨간 border + glow 효과)
-- 클릭 시 상세 팝업 (확대 스크린샷, 상태 이력 그래프, 베이스라인 비교)
+- 클릭 시 상세 팝업 (확대 스크린샷, 상태 이력 그래프, 위변조 탐지 분석, 베이스라인/diff 비교)
 
 ### 전광판 특화 기능
 
@@ -695,6 +705,7 @@ volumes:
 | Phase 4 | **완료** | Dark Theme 대시보드, 스크린샷 그리드, Socket.IO 실시간, 키오스크 모드 |
 | Phase 5 | **완료** | 알림(Email/Slack/Telegram), Vitest 통합 테스트(28개), Docker 배포 |
 | Phase 6 | **완료** | 하이브리드 위변조 탐지 (HTML 구조 + 도메인 감사 + 픽셀 비교 3계층), 팝업 자동 제거 |
+| Phase 7 | **완료** | 위변조 탐지 분석 UI 강화 (하이브리드 데이터 대시보드 노출, 설정 페이지) |
 
 ### 주요 구현 세부사항
 
@@ -723,6 +734,19 @@ volumes:
 - **CORP 헤더**: 스크린샷 이미지에 `Cross-Origin-Resource-Policy: cross-origin` 설정 (cross-origin img 로드 허용)
 - **인증 미들웨어**: Role 비교 시 case-insensitive (Prisma enum은 대문자, 코드는 소문자)
 - **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 57개, HtmlAnalysisService 29개 포함)
+- **위변조 탐지 분석 UI** (Phase 7):
+  - DetailPopup: "베이스라인 비교" → "위변조 탐지 분석"으로 교체
+    - 탐지 방식 뱃지 (하이브리드/픽셀 전용), 종합 유사도 점수 헤더
+    - 하이브리드 모드: 3개 ScoreBar (픽셀 비교 30%, HTML 구조 분석 30%, 외부 도메인 감사 40%)
+    - pixel_only 모드: 1개 ScoreBar (픽셀 유사도)
+    - 새 외부 도메인 감지 시 빨간 경고 박스 + 도메인 목록
+    - 제거된 외부 도메인 시 노란 경고 박스 + 도메인 목록
+    - 베이스라인/diff 이미지 비교 그리드 유지
+  - Settings 페이지: "위변조 탐지 설정" 읽기 전용 섹션 추가
+    - 4칸 요약 카드 (임계값, HTML 분석 상태, 탐지 모드, 가중치 합계)
+    - 하이브리드 점수 가중치 시각화 바
+  - MonitoringStatus API 응답에 `htmlSimilarityScore`, `detectionMethod` 필드 추가
+  - `GET /api/settings/defacement` 엔드포인트 추가 (임계값, 가중치, HTML 분석 활성화 상태)
 
 ### 하이브리드 위변조 탐지 환경변수
 
