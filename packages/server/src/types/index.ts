@@ -243,7 +243,7 @@ export interface WsDefacementDetected {
   websiteId: number;
   websiteName: string;
   similarityScore: number;
-  diffImageUrl: string;
+  diffImageUrl: string | null;
 }
 
 // ============================================

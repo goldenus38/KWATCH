@@ -66,14 +66,20 @@ export function DetailPopup({
 
       if (historyRes.status === 'fulfilled' && historyRes.value.success && historyRes.value.data) {
         setMonitoringHistory(historyRes.value.data);
+      } else if (historyRes.status === 'rejected') {
+        console.error('[DetailPopup] Failed to fetch monitoring history:', historyRes.reason);
       }
 
       if (defacementRes.status === 'fulfilled' && defacementRes.value.success && defacementRes.value.data) {
         setLatestDefacement(defacementRes.value.data);
+      } else if (defacementRes.status === 'rejected') {
+        console.error('[DetailPopup] Failed to fetch defacement data:', defacementRes.reason);
       }
 
       if (alertsRes.status === 'fulfilled' && alertsRes.value.success && alertsRes.value.data) {
         setRecentAlerts(alertsRes.value.data);
+      } else if (alertsRes.status === 'rejected') {
+        console.error('[DetailPopup] Failed to fetch alerts:', alertsRes.reason);
       }
 
       setIsLoading(false);
@@ -352,7 +358,7 @@ export function DetailPopup({
                       {baselineScreenshotUrl ? (
                         <img
                           src={baselineScreenshotUrl}
-                          alt="베이스라인"
+                          alt={`${websiteName} 베이스라인 스크린샷`}
                           className="w-full h-full object-contain"
                         />
                       ) : (
@@ -370,7 +376,7 @@ export function DetailPopup({
                       {diffImageUrl && latestDefacement?.diffImagePath ? (
                         <img
                           src={diffImageUrl}
-                          alt="차이 분석"
+                          alt={`${websiteName} 차이 분석`}
                           className="w-full h-full object-contain"
                         />
                       ) : (

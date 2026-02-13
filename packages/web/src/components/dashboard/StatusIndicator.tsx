@@ -27,6 +27,16 @@ export function StatusIndicator({
 
   const colors = STATUS_COLORS[status];
 
+  const statusLabels: Record<WebsiteStatus, string> = {
+    normal: '정상',
+    warning: '경고',
+    critical: '장애',
+    checking: '점검 중',
+    unknown: '알 수 없음',
+  };
+
+  const label = statusLabels[status];
+
   return (
     <div
       className={cn(
@@ -35,9 +45,9 @@ export function StatusIndicator({
         pulse && status === 'critical' && 'animate-pulse',
       )}
       style={{ backgroundColor: colors.dot }}
-      title={status}
+      title={label}
       role="img"
-      aria-label={`Status: ${status}`}
+      aria-label={label}
     />
   );
 }

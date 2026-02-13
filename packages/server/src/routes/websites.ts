@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { getDbClient } from '../config/database';
 import { authenticate, authorize } from '../middleware/auth';
 import { sendSuccess, sendError, createPaginationMeta } from '../utils/response';
@@ -35,7 +36,7 @@ router.get('/', authenticate, async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     // Prisma where 절 동적 구성
-    const where: any = {};
+    const where: Prisma.WebsiteWhereInput = {};
 
     // 카테고리 필터
     if (categoryId) {
@@ -305,8 +306,8 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
         ...(updates.organizationName !== undefined && { organizationName: updates.organizationName }),
         ...(updates.categoryId !== undefined && { categoryId: updates.categoryId }),
         ...(updates.description !== undefined && { description: updates.description }),
-        ...(updates.checkIntervalSeconds && { checkIntervalSeconds: updates.checkIntervalSeconds }),
-        ...(updates.timeoutSeconds && { timeoutSeconds: updates.timeoutSeconds }),
+        ...(updates.checkIntervalSeconds !== undefined && { checkIntervalSeconds: updates.checkIntervalSeconds }),
+        ...(updates.timeoutSeconds !== undefined && { timeoutSeconds: updates.timeoutSeconds }),
         ...(updates.isActive !== undefined && { isActive: updates.isActive }),
         ...(updates.ignoreSelectors !== undefined && { ignoreSelectors: updates.ignoreSelectors }),
       },

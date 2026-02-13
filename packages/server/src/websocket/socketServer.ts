@@ -1,6 +1,7 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { logger } from '../utils/logger';
+import { config } from '../config';
 import { MonitoringStatus, WsAlertNew, WsDefacementDetected } from '../types';
 
 let io: SocketIOServer | null = null;
@@ -13,7 +14,7 @@ let io: SocketIOServer | null = null;
 export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: '*',
+      origin: config.isDev ? '*' : [`http://localhost:3000`, `http://127.0.0.1:3000`],
       methods: ['GET', 'POST'],
     },
   });
@@ -131,7 +132,7 @@ export function emitAlertNew(alert: WsAlertNew['alert']): void {
  * 위변조 감지를 브로드캐스트합니다
  * @param detection 위변조 감지 정보
  */
-export function emitDefacementDetected(detection: WsDefacementDetected | any): void {
+export function emitDefacementDetected(detection: WsDefacementDetected): void {
   if (!io) {
     logger.warn('[SocketIO] Socket.IO not initialized, defacement notification skipped');
     return;

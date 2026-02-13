@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 import { sendError } from '../utils/response';
+import { config } from '../config';
 
 /**
  * 전역 에러 핸들링 미들웨어
@@ -51,9 +52,9 @@ export const errorHandler = (
   sendError(
     res,
     'INTERNAL_ERROR',
-    process.env.NODE_ENV === 'production'
-      ? '서버 내부 오류가 발생했습니다.'
-      : err.message,
+    config.isDev
+      ? err.message
+      : '서버 내부 오류가 발생했습니다.',
     500,
   );
 };

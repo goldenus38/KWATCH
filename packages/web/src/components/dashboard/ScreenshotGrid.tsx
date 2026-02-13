@@ -106,7 +106,7 @@ export function ScreenshotGrid({
           { length: Math.max(0, itemsPerPage - pageItems.length) },
           (_, i) => (
             <div
-              key={`empty-${i}`}
+              key={`empty-${currentPage}-${i}`}
               className="rounded bg-kwatch-bg-secondary/20 border border-dashed border-kwatch-bg-tertiary"
             />
           ),
