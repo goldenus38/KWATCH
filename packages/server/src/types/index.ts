@@ -101,6 +101,8 @@ export interface MonitoringStatus {
   defacementStatus: {
     isDefaced: boolean;
     similarityScore: number | null;
+    htmlSimilarityScore: number | null;
+    detectionMethod: 'pixel_only' | 'hybrid';
   } | null;
 }
 

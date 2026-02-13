@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import type { AlertChannel, User } from '@/types';
+import type { AlertChannel, User, DefacementConfig } from '@/types';
 
 export default function SettingsPage() {
   const [alertChannels, setAlertChannels] = useState<AlertChannel[]>([]);
@@ -19,6 +19,9 @@ export default function SettingsPage() {
     checkInterval: { avg: number; min: number; max: number; mode: number };
   } | null>(null);
   const [isSavingInterval, setIsSavingInterval] = useState(false);
+
+  // 위변조 탐지 설정
+  const [defacementConfig, setDefacementConfig] = useState<DefacementConfig | null>(null);
 
   // 현재 사용자 정보 로드
   useEffect(() => {
@@ -87,6 +90,18 @@ export default function SettingsPage() {
     }
   };
 
+  // 위변조 탐지 설정 조회
+  const fetchDefacementConfig = async () => {
+    try {
+      const response = await api.get<DefacementConfig>('/api/settings/defacement');
+      if (response.success && response.data) {
+        setDefacementConfig(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching defacement config:', err);
+    }
+  };
+
   // 체크 주기 저장
   const handleSaveCheckInterval = async () => {
     setIsSavingInterval(true);
@@ -117,6 +132,7 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchAlertChannels();
     fetchMonitoringSettings();
+    fetchDefacementConfig();
     if (currentUser?.role === 'admin') {
       fetchUsers();
     }
@@ -256,7 +272,77 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 섹션 2: 알림 채널 설정 */}
+      {/* 섹션 2: 위변조 탐지 설정 */}
+      {defacementConfig && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold text-kwatch-text-primary">
+            위변조 탐지 설정
+          </h2>
+
+          <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 space-y-6">
+            {/* 요약 카드 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">위변조 임계값</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {defacementConfig.defacementThreshold}%
+                </div>
+              </div>
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">HTML 분석</div>
+                <div className={`text-lg font-semibold ${defacementConfig.htmlAnalysisEnabled ? 'text-kwatch-status-normal' : 'text-kwatch-text-muted'}`}>
+                  {defacementConfig.htmlAnalysisEnabled ? '활성' : '비활성'}
+                </div>
+              </div>
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">탐지 모드</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {defacementConfig.htmlAnalysisEnabled ? '하이브리드' : '픽셀 전용'}
+                </div>
+              </div>
+              <div className="bg-kwatch-bg-primary rounded-md p-3">
+                <div className="text-xs text-kwatch-text-muted">가중치 합계</div>
+                <div className="text-lg font-semibold text-kwatch-text-primary">
+                  {(defacementConfig.hybridWeights.pixel + defacementConfig.hybridWeights.structural + defacementConfig.hybridWeights.critical).toFixed(1)}
+                </div>
+              </div>
+            </div>
+
+            {/* 하이브리드 점수 가중치 */}
+            <div>
+              <h3 className="text-sm font-medium text-kwatch-text-primary mb-3">
+                하이브리드 점수 가중치
+              </h3>
+              <div className="space-y-3">
+                {[
+                  { label: '픽셀 비교', value: defacementConfig.hybridWeights.pixel },
+                  { label: '구조 분석', value: defacementConfig.hybridWeights.structural },
+                  { label: '도메인 감사', value: defacementConfig.hybridWeights.critical },
+                ].map(({ label, value }) => (
+                  <div key={label} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-kwatch-text-secondary">{label}</span>
+                      <span className="text-kwatch-text-primary font-semibold">{(value * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-kwatch-bg-tertiary rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-kwatch-accent transition-all"
+                        style={{ width: `${value * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-kwatch-text-muted">
+              위변조 탐지 설정은 환경변수로 관리됩니다. 변경이 필요하면 서버의 .env 파일을 수정한 후 서버를 재시작하세요.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 섹션 3: 알림 채널 설정 */}
       <div className="space-y-4">
         <h2 className="text-2xl font-semibold text-kwatch-text-primary">
           알림 채널 설정

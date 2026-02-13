@@ -271,6 +271,11 @@ export class MonitoringService {
               similarityScore: latestDefacement.similarityScore
                 ? Number(latestDefacement.similarityScore)
                 : null,
+              htmlSimilarityScore: latestDefacement.htmlSimilarityScore
+                ? Number(latestDefacement.htmlSimilarityScore)
+                : null,
+              detectionMethod: latestDefacement.htmlSimilarityScore != null
+                ? 'hybrid' : 'pixel_only',
             }
           : null,
       };
@@ -339,6 +344,11 @@ export class MonitoringService {
                 similarityScore: latestDefacement.similarityScore
                   ? Number(latestDefacement.similarityScore)
                   : null,
+                htmlSimilarityScore: latestDefacement.htmlSimilarityScore
+                  ? Number(latestDefacement.htmlSimilarityScore)
+                  : null,
+                detectionMethod: latestDefacement.htmlSimilarityScore != null
+                  ? 'hybrid' : 'pixel_only',
               }
             : null,
         };

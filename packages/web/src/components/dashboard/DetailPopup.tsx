@@ -15,6 +15,17 @@ import { API_BASE_URL } from '@/lib/constants';
 import { formatDateTime, formatResponseTime, formatTime } from '@/lib/utils';
 import type { MonitoringResult, MonitoringStatus, Alert } from '@/types';
 
+interface DetectionDetails {
+  pixelScore: number;
+  structuralScore: number;
+  criticalElementsScore: number;
+  hybridScore: number;
+  newDomains: string[];
+  removedDomains: string[];
+  structuralMatch: boolean;
+  weights: { pixel: number; structural: number; critical: number };
+}
+
 interface DefacementCheckData {
   id: string;
   baselineId: number;
@@ -23,6 +34,10 @@ interface DefacementCheckData {
   isDefaced: boolean;
   diffImagePath: string | null;
   checkedAt: string;
+  structuralScore: number | null;
+  criticalElementsScore: number | null;
+  htmlSimilarityScore: number | null;
+  detectionDetails: DetectionDetails | null;
   baseline?: {
     screenshotId: string;
   };
@@ -36,8 +51,36 @@ interface DetailPopupProps {
 }
 
 /**
+ * 점수 프로그레스 바 컴포넌트
+ */
+function ScoreBar({ label, score, weight }: { label: string; score: number; weight?: number }) {
+  const color = score >= 85 ? 'bg-kwatch-status-normal' : score >= 60 ? 'bg-kwatch-status-warning' : 'bg-kwatch-status-critical';
+  const textColor = score >= 85 ? 'text-kwatch-status-normal' : score >= 60 ? 'text-kwatch-status-warning' : 'text-kwatch-status-critical';
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-dashboard-sm">
+        <span className="text-kwatch-text-secondary">
+          {label}
+          {weight != null && (
+            <span className="text-kwatch-text-muted ml-1">({(weight * 100).toFixed(0)}%)</span>
+          )}
+        </span>
+        <span className={`font-semibold ${textColor}`}>{score.toFixed(1)}%</span>
+      </div>
+      <div className="w-full h-2 bg-kwatch-bg-tertiary rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
  * 웹사이트 상세 정보 팝업/모달
- * 전체 스크린샷, 웹사이트 정보, 상태 이력 그래프, 베이스라인 비교
+ * 전체 스크린샷, 웹사이트 정보, 상태 이력 그래프, 위변조 탐지 분석
  */
 export function DetailPopup({
   websiteId,
@@ -218,11 +261,17 @@ export function DetailPopup({
                       {siteStatus?.defacementStatus ? (
                         siteStatus.defacementStatus.isDefaced ? (
                           <span className="text-kwatch-status-critical">
-                            위변조 감지 (유사도: {siteStatus.defacementStatus.similarityScore?.toFixed(1) ?? '-'}%)
+                            위변조 감지 (유사도: {(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore)?.toFixed(1) ?? '-'}%)
+                            {siteStatus.defacementStatus.detectionMethod === 'hybrid' && (
+                              <span className="ml-1 px-1.5 py-0.5 bg-kwatch-accent/20 text-kwatch-accent rounded text-xs font-normal">하이브리드</span>
+                            )}
                           </span>
                         ) : (
                           <span className="text-kwatch-status-normal">
-                            정상 (유사도: {siteStatus.defacementStatus.similarityScore?.toFixed(1) ?? '-'}%)
+                            정상 (유사도: {(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore)?.toFixed(1) ?? '-'}%)
+                            {siteStatus.defacementStatus.detectionMethod === 'hybrid' && (
+                              <span className="ml-1 px-1.5 py-0.5 bg-kwatch-accent/20 text-kwatch-accent rounded text-xs font-normal">하이브리드</span>
+                            )}
                           </span>
                         )
                       ) : (
@@ -337,56 +386,133 @@ export function DetailPopup({
                 </div>
               </section>
 
-              {/* 5. 베이스라인 비교 */}
+              {/* 5. 위변조 탐지 분석 */}
               <section>
-                <h3 className="text-dashboard-base font-bold text-kwatch-text-primary mb-3">
-                  베이스라인 비교
+                <div className="flex items-center gap-3 mb-3">
+                  <h3 className="text-dashboard-base font-bold text-kwatch-text-primary">
+                    위변조 탐지 분석
+                  </h3>
                   {latestDefacement && (
-                    <span className="ml-3 text-dashboard-sm font-normal text-kwatch-text-secondary">
-                      유사도: {latestDefacement.similarityScore != null
-                        ? `${latestDefacement.similarityScore}%`
-                        : '-'}
-                    </span>
+                    <>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        latestDefacement.htmlSimilarityScore != null
+                          ? 'bg-kwatch-accent/20 text-kwatch-accent'
+                          : 'bg-kwatch-bg-tertiary text-kwatch-text-secondary'
+                      }`}>
+                        {latestDefacement.htmlSimilarityScore != null ? '하이브리드' : '픽셀 전용'}
+                      </span>
+                      <span className="text-dashboard-sm font-normal text-kwatch-text-secondary">
+                        종합 유사도: {(latestDefacement.htmlSimilarityScore ?? latestDefacement.similarityScore) != null
+                          ? `${(latestDefacement.htmlSimilarityScore ?? latestDefacement.similarityScore)!.toFixed(1)}%`
+                          : '-'}
+                      </span>
+                    </>
                   )}
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
-                    <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
-                      베이스라인 스크린샷
-                    </div>
-                    <div className="h-48 bg-black flex items-center justify-center">
-                      {baselineScreenshotUrl ? (
-                        <img
-                          src={baselineScreenshotUrl}
-                          alt={`${websiteName} 베이스라인 스크린샷`}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-kwatch-text-muted text-sm">
-                          베이스라인 없음
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
-                    <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
-                      차이 분석
-                    </div>
-                    <div className="h-48 bg-black flex items-center justify-center">
-                      {diffImageUrl && latestDefacement?.diffImagePath ? (
-                        <img
-                          src={diffImageUrl}
-                          alt={`${websiteName} 차이 분석`}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-kwatch-text-muted text-sm">
-                          차이 데이터 없음
-                        </span>
-                      )}
-                    </div>
-                  </div>
                 </div>
+
+                {latestDefacement ? (
+                  <div className="space-y-4">
+                    {/* 점수 바 */}
+                    <div className="bg-kwatch-bg-tertiary/30 rounded p-4 space-y-3">
+                      {latestDefacement.detectionDetails ? (
+                        <>
+                          <ScoreBar
+                            label="픽셀 비교"
+                            score={latestDefacement.detectionDetails.pixelScore}
+                            weight={latestDefacement.detectionDetails.weights.pixel}
+                          />
+                          <ScoreBar
+                            label="HTML 구조 분석"
+                            score={latestDefacement.detectionDetails.structuralScore}
+                            weight={latestDefacement.detectionDetails.weights.structural}
+                          />
+                          <ScoreBar
+                            label="외부 도메인 감사"
+                            score={latestDefacement.detectionDetails.criticalElementsScore}
+                            weight={latestDefacement.detectionDetails.weights.critical}
+                          />
+                        </>
+                      ) : (
+                        <ScoreBar
+                          label="픽셀 유사도"
+                          score={latestDefacement.similarityScore ?? 0}
+                        />
+                      )}
+                    </div>
+
+                    {/* 새 외부 도메인 경고 */}
+                    {latestDefacement.detectionDetails?.newDomains && latestDefacement.detectionDetails.newDomains.length > 0 && (
+                      <div className="bg-kwatch-status-critical/10 border border-kwatch-status-critical/30 rounded p-3">
+                        <div className="text-dashboard-sm font-semibold text-kwatch-status-critical mb-1">
+                          새 외부 도메인 감지
+                        </div>
+                        <ul className="text-dashboard-sm text-kwatch-text-primary space-y-0.5">
+                          {latestDefacement.detectionDetails.newDomains.map((domain) => (
+                            <li key={domain} className="font-mono">{domain}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* 제거된 외부 도메인 경고 */}
+                    {latestDefacement.detectionDetails?.removedDomains && latestDefacement.detectionDetails.removedDomains.length > 0 && (
+                      <div className="bg-kwatch-status-warning/10 border border-kwatch-status-warning/30 rounded p-3">
+                        <div className="text-dashboard-sm font-semibold text-kwatch-status-warning mb-1">
+                          제거된 외부 도메인
+                        </div>
+                        <ul className="text-dashboard-sm text-kwatch-text-primary space-y-0.5">
+                          {latestDefacement.detectionDetails.removedDomains.map((domain) => (
+                            <li key={domain} className="font-mono">{domain}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* 이미지 비교 그리드 */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
+                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
+                          베이스라인 스크린샷
+                        </div>
+                        <div className="h-48 bg-black flex items-center justify-center">
+                          {baselineScreenshotUrl ? (
+                            <img
+                              src={baselineScreenshotUrl}
+                              alt={`${websiteName} 베이스라인 스크린샷`}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-kwatch-text-muted text-sm">
+                              베이스라인 없음
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
+                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
+                          차이 분석
+                        </div>
+                        <div className="h-48 bg-black flex items-center justify-center">
+                          {diffImageUrl && latestDefacement?.diffImagePath ? (
+                            <img
+                              src={diffImageUrl}
+                              alt={`${websiteName} 차이 분석`}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-kwatch-text-muted text-sm">
+                              차이 데이터 없음
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-kwatch-text-muted bg-kwatch-bg-tertiary/30 rounded">
+                    위변조 검사 데이터가 없습니다
+                  </div>
+                )}
               </section>
             </div>
           )}

@@ -111,6 +111,8 @@ export interface MonitoringStatus {
   defacementStatus: {
     isDefaced: boolean;
     similarityScore: number | null;
+    htmlSimilarityScore: number | null;
+    detectionMethod: 'pixel_only' | 'hybrid';
   } | null;
 }
 
@@ -142,6 +144,17 @@ export interface Screenshot {
 // 위변조
 // ============================================
 
+export interface DetectionDetails {
+  pixelScore: number;
+  structuralScore: number;
+  criticalElementsScore: number;
+  hybridScore: number;
+  newDomains: string[];
+  removedDomains: string[];
+  structuralMatch: boolean;
+  weights: { pixel: number; structural: number; critical: number };
+}
+
 export interface DefacementCheck {
   id: string;
   websiteId: number;
@@ -151,6 +164,10 @@ export interface DefacementCheck {
   isDefaced: boolean;
   diffImagePath: string | null;
   checkedAt: string;
+  structuralScore: number | null;
+  criticalElementsScore: number | null;
+  htmlSimilarityScore: number | null;
+  detectionDetails: DetectionDetails | null;
 }
 
 export interface DefacementBaseline {
@@ -184,6 +201,16 @@ export interface AlertChannel {
   channelType: 'EMAIL' | 'SLACK' | 'TELEGRAM';
   config: Record<string, unknown>;
   isActive: boolean;
+}
+
+// ============================================
+// 위변조 탐지 설정
+// ============================================
+
+export interface DefacementConfig {
+  defacementThreshold: number;
+  hybridWeights: { pixel: number; structural: number; critical: number };
+  htmlAnalysisEnabled: boolean;
 }
 
 // ============================================

@@ -179,4 +179,16 @@ router.put('/monitoring/defacement-interval', authenticate, authorize('admin'), 
   }
 });
 
+/**
+ * GET /api/settings/defacement
+ * 위변조 탐지 설정 조회 (읽기 전용)
+ */
+router.get('/defacement', authenticate, async (req, res) => {
+  sendSuccess(res, {
+    defacementThreshold: config.monitoring.defacementThreshold,
+    hybridWeights: config.monitoring.hybridWeights,
+    htmlAnalysisEnabled: config.monitoring.htmlAnalysisEnabled,
+  });
+});
+
 export default router;

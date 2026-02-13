@@ -107,6 +107,8 @@ export function useMonitoringData(
                 defacementStatus: {
                   isDefaced: true,
                   similarityScore: data.similarityScore,
+                  htmlSimilarityScore: s.defacementStatus?.htmlSimilarityScore ?? null,
+                  detectionMethod: s.defacementStatus?.detectionMethod ?? 'pixel_only',
                 },
               }
             : s,
