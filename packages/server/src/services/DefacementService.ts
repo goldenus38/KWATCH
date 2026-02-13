@@ -102,6 +102,7 @@ export class DefacementService {
             {
               structuralHash: baseline.structuralHash!,
               domainWhitelist: (baseline.domainWhitelist as string[]) || [],
+              structuralPaths: (baseline.structuralData as string[] | null) ?? null,
             },
             ignoreSelectors,
           );
@@ -325,7 +326,7 @@ export class DefacementService {
       }
 
       // HTML 베이스라인 데이터 생성 (htmlContent가 있을 때)
-      let htmlBaselineData: { htmlHash: string; structuralHash: string; domainWhitelist: string[] } | null = null;
+      let htmlBaselineData: { htmlHash: string; structuralHash: string; structuralPaths: string[]; domainWhitelist: string[] } | null = null;
       if (htmlContent && config.monitoring.htmlAnalysisEnabled) {
         try {
           const website = await this.prisma.website.findUnique({
@@ -354,6 +355,7 @@ export class DefacementService {
           ...(htmlBaselineData && {
             htmlHash: htmlBaselineData.htmlHash,
             structuralHash: htmlBaselineData.structuralHash,
+            structuralData: htmlBaselineData.structuralPaths,
             domainWhitelist: htmlBaselineData.domainWhitelist,
           }),
         },

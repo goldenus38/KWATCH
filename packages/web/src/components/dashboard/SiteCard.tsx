@@ -20,7 +20,8 @@ export const SiteCard = React.memo(function SiteCard({ data, onClick }: SiteCard
   const status: WebsiteStatus = (() => {
     if (!data.isUp) return 'critical';
     if (data.defacementStatus?.isDefaced) return 'critical';
-    if (data.responseTimeMs && data.responseTimeMs > RESPONSE_TIME_WARNING_MS) return 'warning';
+    // isUp=true인 경우만 응답시간 경고 (실패 시 responseTimeMs는 타임아웃 소요시간이므로 무의미)
+    if (data.isUp && data.responseTimeMs && data.responseTimeMs > RESPONSE_TIME_WARNING_MS) return 'warning';
     return 'normal';
   })();
 

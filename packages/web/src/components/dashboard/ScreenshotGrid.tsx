@@ -32,10 +32,11 @@ export function ScreenshotGrid({
       const getStatusPriority = (status: MonitoringStatus): number => {
         if (status.defacementStatus?.isDefaced) return 0; // 위변조: 최우선
         if (!status.isUp) return 1; // 장애: 다음
-        if (status.responseTimeMs && status.responseTimeMs > 3000) return 2; // 경고
+        if (status.isUp && status.responseTimeMs && status.responseTimeMs > 3000) return 2; // 경고
         return 3; // 정상: 마지막
       };
-      return getStatusPriority(a) - getStatusPriority(b);
+      const priorityDiff = getStatusPriority(a) - getStatusPriority(b);
+      return priorityDiff !== 0 ? priorityDiff : a.websiteId - b.websiteId;
     });
   }, [statuses]);
 

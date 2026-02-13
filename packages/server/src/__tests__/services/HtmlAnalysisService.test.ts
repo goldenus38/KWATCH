@@ -361,8 +361,172 @@ describe('HtmlAnalysisService', () => {
     });
   });
 
+  describe('extractTagPaths', () => {
+    it('should extract tag paths from simple HTML', () => {
+      const html = '<html><body><div><h1>Title</h1><p>Content</p></div></body></html>';
+      const paths = service.extractTagPaths(html);
+
+      expect(paths).toContain('html>body>div>h1');
+      expect(paths).toContain('html>body>div>p');
+    });
+
+    it('should return minimal paths for empty HTML', () => {
+      // cheerio.load('') generates <html><head></head><body></body></html>
+      const paths = service.extractTagPaths('');
+      expect(paths).toEqual(['html>head', 'html>body']);
+    });
+
+    it('should handle nested structures', () => {
+      const html = '<html><body><div><ul><li>A</li><li>B</li></ul></div></body></html>';
+      const paths = service.extractTagPaths(html);
+
+      const liPaths = paths.filter((p) => p.endsWith('>li'));
+      expect(liPaths).toHaveLength(2);
+    });
+
+    it('should handle duplicate structures (multiset)', () => {
+      const html = '<html><body><div><p>A</p></div><div><p>B</p></div></body></html>';
+      const paths = service.extractTagPaths(html);
+
+      const divPPaths = paths.filter((p) => p === 'html>body>div>p');
+      expect(divPPaths).toHaveLength(2);
+    });
+
+    it('should produce same paths regardless of text content', () => {
+      const html1 = '<html><body><div><p>Hello</p></div></body></html>';
+      const html2 = '<html><body><div><p>World</p></div></body></html>';
+
+      expect(service.extractTagPaths(html1)).toEqual(service.extractTagPaths(html2));
+    });
+  });
+
+  describe('computeStructuralSimilarity', () => {
+    it('should return 100 for identical paths', () => {
+      const paths = ['html>body>div>p', 'html>body>div>h1'];
+      expect(service.computeStructuralSimilarity(paths, paths)).toBe(100);
+    });
+
+    it('should return 0 for completely different paths', () => {
+      const current = ['html>body>div>p'];
+      const baseline = ['html>body>span>a'];
+      expect(service.computeStructuralSimilarity(current, baseline)).toBe(0);
+    });
+
+    it('should return 100 for two empty arrays', () => {
+      expect(service.computeStructuralSimilarity([], [])).toBe(100);
+    });
+
+    it('should return 0 when one is empty', () => {
+      expect(service.computeStructuralSimilarity([], ['html>body>p'])).toBe(0);
+      expect(service.computeStructuralSimilarity(['html>body>p'], [])).toBe(0);
+    });
+
+    it('should handle partial overlap correctly', () => {
+      const current = ['html>body>div>p', 'html>body>div>h1', 'html>body>div>span'];
+      const baseline = ['html>body>div>p', 'html>body>div>h1'];
+
+      // intersection=2, union=3 → 66.67%
+      const score = service.computeStructuralSimilarity(current, baseline);
+      expect(score).toBeCloseTo(66.67, 1);
+    });
+
+    it('should be tolerant of small changes on large pages (>95%)', () => {
+      // Simulate a large page with 5000 tag paths, 2 added
+      const basePaths = Array.from({ length: 5000 }, (_, i) => `html>body>div>item${i}`);
+      const currentPaths = [...basePaths, 'html>body>div>newItem1', 'html>body>div>newItem2'];
+
+      // intersection=5000, union=5002 → ~99.96%
+      const score = service.computeStructuralSimilarity(currentPaths, basePaths);
+      expect(score).toBeGreaterThan(99);
+    });
+
+    it('should handle multiset counts correctly', () => {
+      const current = ['a', 'a', 'b'];
+      const baseline = ['a', 'b', 'b'];
+
+      // intersection: min(2,1)+min(1,2) = 1+1 = 2
+      // union: max(2,1)+max(1,2) = 2+2 = 4
+      // score = 2/4 = 50%
+      const score = service.computeStructuralSimilarity(current, baseline);
+      expect(score).toBe(50);
+    });
+  });
+
+  describe('compareWithBaseline (gradual structural scoring)', () => {
+    const siteUrl = 'https://example.com';
+
+    it('should use gradual scoring when structuralPaths is provided', () => {
+      const baselineHtml = '<html><body><div><p>Content</p></div></body></html>';
+      const currentHtml = '<html><body><div><p>Content</p><span>Extra</span></div></body></html>';
+
+      const structuralHash = service.extractStructuralFingerprint(baselineHtml);
+      const baselinePaths = service.extractTagPaths(baselineHtml);
+      const domains = service.extractCriticalDomains(baselineHtml, siteUrl);
+
+      const result = service.compareWithBaseline(currentHtml, siteUrl, {
+        structuralHash,
+        domainWhitelist: domains,
+        structuralPaths: baselinePaths,
+      });
+
+      // Should NOT be 0 (binary) — should be a gradual score
+      expect(result.structuralScore).toBeGreaterThan(0);
+      expect(result.structuralScore).toBeLessThan(100);
+      expect(result.structuralMatch).toBe(false);
+    });
+
+    it('should fall back to binary scoring when structuralPaths is null', () => {
+      const baselineHtml = '<html><body><div><p>Content</p></div></body></html>';
+      const currentHtml = '<html><body><div><p>Content</p><span>Extra</span></div></body></html>';
+
+      const structuralHash = service.extractStructuralFingerprint(baselineHtml);
+      const domains = service.extractCriticalDomains(baselineHtml, siteUrl);
+
+      const result = service.compareWithBaseline(currentHtml, siteUrl, {
+        structuralHash,
+        domainWhitelist: domains,
+        structuralPaths: null,
+      });
+
+      // Binary fallback: structure changed → 0
+      expect(result.structuralScore).toBe(0);
+    });
+
+    it('should fall back to binary scoring when structuralPaths is not provided', () => {
+      const baselineHtml = '<html><body><div><p>Content</p></div></body></html>';
+      const currentHtml = '<html><body><div><p>Content</p><span>Extra</span></div></body></html>';
+
+      const structuralHash = service.extractStructuralFingerprint(baselineHtml);
+      const domains = service.extractCriticalDomains(baselineHtml, siteUrl);
+
+      const result = service.compareWithBaseline(currentHtml, siteUrl, {
+        structuralHash,
+        domainWhitelist: domains,
+      });
+
+      // Binary fallback: structure changed → 0
+      expect(result.structuralScore).toBe(0);
+    });
+
+    it('should return 100 when hash matches even with structuralPaths', () => {
+      const html = '<html><body><div><p>Content</p></div></body></html>';
+      const structuralHash = service.extractStructuralFingerprint(html);
+      const baselinePaths = service.extractTagPaths(html);
+      const domains = service.extractCriticalDomains(html, siteUrl);
+
+      const result = service.compareWithBaseline(html, siteUrl, {
+        structuralHash,
+        domainWhitelist: domains,
+        structuralPaths: baselinePaths,
+      });
+
+      expect(result.structuralScore).toBe(100);
+      expect(result.structuralMatch).toBe(true);
+    });
+  });
+
   describe('createBaselineData', () => {
-    it('should return htmlHash, structuralHash, and domainWhitelist', () => {
+    it('should return htmlHash, structuralHash, structuralPaths, and domainWhitelist', () => {
       const html = `
         <html><body>
           <script src="https://cdn.example.com/lib.js"></script>
@@ -373,6 +537,8 @@ describe('HtmlAnalysisService', () => {
 
       expect(result.htmlHash).toMatch(/^[a-f0-9]{64}$/);
       expect(result.structuralHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.structuralPaths).toBeInstanceOf(Array);
+      expect(result.structuralPaths.length).toBeGreaterThan(0);
       expect(result.domainWhitelist).toContain('cdn.example.com');
     });
 

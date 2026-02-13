@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import sharp from 'sharp';
 import { getDbClient } from '../config/database';
 import { config } from '../config';
@@ -58,6 +58,7 @@ export class ScreenshotService {
     // TODO: URL 유효성 검증
     // TODO: 디렉토리 존재 확인 및 생성
     let browser: Browser | null = null;
+    let context: BrowserContext | null = null;
     let page: Page | null = null;
 
     try {
@@ -67,8 +68,9 @@ export class ScreenshotService {
       // TODO: 스크린샷 디렉토리 생성
       await fs.mkdir(this.currentDir, { recursive: true });
 
-      // TODO: 새 페이지 컨텍스트 생성
-      page = await browser.newPage();
+      // TODO: 새 페이지 컨텍스트 생성 (SSL 인증서 오류 무시)
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      page = await context.newPage();
 
       // JS alert/confirm/prompt 자동 dismiss (페이지 로드 전에 등록)
       page.on('dialog', async (dialog) => {
@@ -92,14 +94,11 @@ export class ScreenshotService {
       // TODO: 페이지 로딩 실패 시 에러 처리
       await page.goto(url, { waitUntil: 'networkidle', timeout: config.screenshot.timeout });
 
-      // 페이지 로드 후 추가 대기 (JS 렌더링, 폰트 로딩, 이미지 lazy load 완료 보장)
-      await page.waitForTimeout(3000);
+      // 페이지 로드 후 추가 대기 (networkidle이 네트워크 안정을 보장하므로 최소한만)
+      await page.waitForTimeout(1000);
 
       // 레이어 팝업 제거 (한국 공공기관 사이트 대응)
       await this.dismissPopups(page, websiteId);
-
-      // 팝업 제거 후 렌더링 안정화 대기
-      await page.waitForTimeout(500);
 
       // TODO: 스크린샷 파일명 생성 (형식: {websiteId}_{timestamp}.png)
       const timestamp = Date.now();
@@ -146,9 +145,12 @@ export class ScreenshotService {
       logger.error(`captureScreenshot failed for website ${websiteId}:`, error);
       throw error;
     } finally {
-      // TODO: 페이지 닫기 (메모리 누수 방지)
+      // TODO: 페이지/컨텍스트 닫기 (메모리 누수 방지)
       if (page) {
         await page.close();
+      }
+      if (context) {
+        await context.close();
       }
       // TODO: 브라우저는 유지 (여러 웹사이트 체크에 재사용)
     }

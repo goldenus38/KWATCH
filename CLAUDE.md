@@ -709,6 +709,9 @@ volumes:
 
 ### 주요 구현 세부사항
 
+- **SSL 인증서 검증 우회**: `NODE_TLS_REJECT_UNAUTHORIZED=0` (docker-compose.yml) + Playwright `ignoreHTTPSErrors: true` — 관제 시스템은 SSL 유효성 검증이 목적이 아니므로 중간 인증서 누락/도메인 불일치 등 모두 무시
+- **에러 메시지 개선**: MonitoringService에서 `error.cause`의 실제 원인 추출 ("fetch failed" 대신 "unable to verify the first certificate" 등 표시)
+- **대시보드 정렬 안정화**: ScreenshotGrid 정렬에 `websiteId` 보조 키 추가하여 동일 우선순위 사이트 순서 고정
 - **모니터링**: HEAD 요청 우선, 4xx 응답 시 GET으로 자동 fallback (한국 공공기관 서버 호환)
 - **스크린샷**: Docker 환경에서 시스템 Chromium 사용 (`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 환경변수)
 - **팝업 자동 제거**: 스크린샷 캡처 전 한국 공공기관 사이트 팝업을 자동 dismiss
@@ -729,6 +732,11 @@ volumes:
   - 페이지 구조 변경 → CRITICAL, 2회 연속 시 알림
   - 픽셀만 변경 → WARNING, 3회 연속 시 알림
 - **사이트별 동적 영역 제외**: `ignoreSelectors` (CSS 셀렉터 배열)로 사이트별 동적 영역 설정 가능
+- **성능 최적화** (1000개 사이트 대응):
+  - 워커 concurrency 환경변수화 (`MONITORING_CONCURRENCY`, `SCREENSHOT_CONCURRENCY`, `DEFACEMENT_CONCURRENCY`)
+  - Staggered scheduling: 서버 시작 시 모든 작업의 첫 실행을 `STAGGER_WINDOW_SECONDS`(기본 60초) 내 균등 분산 (thundering herd 방지, 전체 사이클 5분 이내 달성)
+  - 미사용 `checkAllWebsites()` 메서드 제거 (BullMQ 워커 파이프라인과 중복)
+  - Docker 서비스별 메모리 제한 설정 (server: 4G, db: 1G, redis: 512M)
 - **스케줄러 연동**: 웹사이트 등록/수정/삭제 시 자동으로 모니터링 스케줄 생성/갱신/제거
 - **Rate Limiter**: 스크린샷 이미지 엔드포인트는 rate limit 제외, API는 15분/1000회
 - **CORP 헤더**: 스크린샷 이미지에 `Cross-Origin-Resource-Policy: cross-origin` 설정 (cross-origin img 로드 허용)
@@ -762,6 +770,37 @@ DEFACEMENT_WEIGHT_CRITICAL=0.4
 # HTML 분석 킬스위치 (false로 설정 시 pixel_only 모드)
 HTML_ANALYSIS_ENABLED=true
 ```
+
+### 성능 설정 (워커 Concurrency)
+
+```env
+# Stagger 윈도우 (서버 시작 시 첫 실행 분산 시간, 초)
+STAGGER_WINDOW_SECONDS=60    # 기본 60초 (5분 내 전체 사이클 달성)
+
+# 워커 동시 처리 수 (사이트 수에 따라 조정)
+MONITORING_CONCURRENCY=20    # HTTP 체크 동시 처리 (기본 20)
+SCREENSHOT_CONCURRENCY=10    # 스크린샷 캡처 동시 처리 (기본 10, 메모리 집약적)
+DEFACEMENT_CONCURRENCY=8     # 위변조 분석 동시 처리 (기본 8, CPU 집약적)
+```
+
+**권장 설정값 (사이트 수 기준):**
+
+| 환경변수 | 500개 | 1000개 | 근거 |
+|---------|-------|--------|------|
+| `MONITORING_CONCURRENCY` | 20 | 20 | 1000÷20×1s=50s < 60s interval |
+| `SCREENSHOT_CONCURRENCY` | 10 | 10 | 메모리 ~1.5-2GB (10 Playwright 페이지) |
+| `DEFACEMENT_CONCURRENCY` | 8 | 8 | CPU-bound, 8이면 충분 |
+
+**Thundering Herd 방지:**
+- `scheduleAllWebsites()`에서 각 웹사이트의 첫 실행을 `STAGGER_WINDOW_SECONDS`(기본 60초) 내에 균등 분산
+- 서버 시작 시 모든 작업이 동시에 큐잉되지 않음
+- 개별 웹사이트 등록/수정 시에는 즉시 실행 (delay=0)
+
+**스크린샷 전체 사이클 5분 이내 최적화:**
+- Stagger 윈도우를 `checkIntervalSeconds`(300초)에서 60초 고정으로 축소 → 240초 절약
+- Playwright `waitForTimeout(3000)` → `1000`으로 축소 (networkidle이 네트워크 안정 보장)
+- 팝업 제거 후 `waitForTimeout(500)` 제거 (동기 DOM 조작이므로 불필요)
+- 예상 소요시간: 508사이트 기준 ~4분 (60초 stagger + 508/10 × 3.5초 캡처)
 
 ### 코드 리뷰 (2026-02-13)
 
@@ -818,7 +857,6 @@ v1.1.0 기능 추가(finalUrl, organizationName 대시보드 노출) 코드 리�
 
 ### 알려진 이슈
 
-- `korea.go.kr`: SSL 인증서 불일치(`ERR_TLS_CERT_ALTNAME_INVALID`)로 모니터링/스크린샷 불가 (사이트 자체 문제)
 - Prisma migration 미생성: 현재 `prisma db push`로 스키마 동기화 중. 운영 전 `prisma migrate dev --name init` 필요
 
 ### 개발 환경 (macOS)

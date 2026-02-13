@@ -104,6 +104,80 @@ export class HtmlAnalysisService {
   }
 
   /**
+   * DOM을 순회하여 루트→리프 태그 경로 배열을 추출합니다
+   * 예: ["html>body>div>h1", "html>body>div>p", ...]
+   */
+  extractTagPaths(html: string): string[] {
+    const $ = cheerio.load(html);
+    const paths: string[] = [];
+
+    const traverse = (element: ReturnType<typeof $>, parentPath: string) => {
+      const children = element.children().toArray();
+      const tagChildren = children.filter((child) => child.type === 'tag');
+
+      if (tagChildren.length === 0) {
+        // 리프 노드: 경로 추가
+        if (parentPath) {
+          paths.push(parentPath);
+        }
+        return;
+      }
+
+      for (const child of tagChildren) {
+        const $child = $(child);
+        const tagName = (child as any).tagName?.toLowerCase() as string | undefined;
+        if (!tagName) continue;
+        const childPath = parentPath ? `${parentPath}>${tagName}` : tagName;
+        traverse($child, childPath);
+      }
+    };
+
+    const $html = $('html');
+    if ($html.length > 0) {
+      traverse($html, 'html');
+    }
+
+    return paths;
+  }
+
+  /**
+   * 멀티셋 Jaccard 유사도를 계산합니다
+   * |intersection| / |union| × 100
+   */
+  computeStructuralSimilarity(currentPaths: string[], baselinePaths: string[]): number {
+    if (currentPaths.length === 0 && baselinePaths.length === 0) return 100;
+    if (currentPaths.length === 0 || baselinePaths.length === 0) return 0;
+
+    // 멀티셋 카운트
+    const countMap = (arr: string[]): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const item of arr) {
+        map.set(item, (map.get(item) || 0) + 1);
+      }
+      return map;
+    };
+
+    const currentCounts = countMap(currentPaths);
+    const baselineCounts = countMap(baselinePaths);
+
+    // 모든 고유 키
+    const allKeys = new Set([...currentCounts.keys(), ...baselineCounts.keys()]);
+
+    let intersectionSize = 0;
+    let unionSize = 0;
+
+    for (const key of allKeys) {
+      const cCount = currentCounts.get(key) || 0;
+      const bCount = baselineCounts.get(key) || 0;
+      intersectionSize += Math.min(cCount, bCount);
+      unionSize += Math.max(cCount, bCount);
+    }
+
+    if (unionSize === 0) return 100;
+    return (intersectionSize / unionSize) * 100;
+  }
+
+  /**
    * HTML에서 외부 도메인 목록을 추출합니다
    * script src, iframe src, link href, form action, object data, embed src
    */
@@ -171,6 +245,7 @@ export class HtmlAnalysisService {
     baseline: {
       structuralHash: string;
       domainWhitelist: string[];
+      structuralPaths?: string[] | null;
     },
     ignoreSelectors: string[] = [],
   ): HtmlAnalysisResult {
@@ -180,7 +255,17 @@ export class HtmlAnalysisService {
     // 구조 해시 비교
     const structuralHash = this.extractStructuralFingerprint(normalized);
     const structuralMatch = structuralHash === baseline.structuralHash;
-    const structuralScore = structuralMatch ? 100 : 0;
+
+    // 점진적 구조 점수: structuralPaths가 있으면 Jaccard 유사도, 없으면 바이너리
+    let structuralScore: number;
+    if (structuralMatch) {
+      structuralScore = 100;
+    } else if (baseline.structuralPaths && baseline.structuralPaths.length > 0) {
+      const currentPaths = this.extractTagPaths(normalized);
+      structuralScore = this.computeStructuralSimilarity(currentPaths, baseline.structuralPaths);
+    } else {
+      structuralScore = 0;
+    }
 
     // 도메인 목록 비교
     const currentDomains = this.extractCriticalDomains(normalized, siteUrl);
@@ -217,14 +302,16 @@ export class HtmlAnalysisService {
   ): {
     htmlHash: string;
     structuralHash: string;
+    structuralPaths: string[];
     domainWhitelist: string[];
   } {
     const normalized = this.normalizeHtml(html, ignoreSelectors);
     const htmlHash = createHash('sha256').update(normalized).digest('hex');
     const structuralHash = this.extractStructuralFingerprint(normalized);
+    const structuralPaths = this.extractTagPaths(normalized);
     const domainWhitelist = this.extractCriticalDomains(normalized, siteUrl);
 
-    return { htmlHash, structuralHash, domainWhitelist };
+    return { htmlHash, structuralHash, structuralPaths, domainWhitelist };
   }
 }
 

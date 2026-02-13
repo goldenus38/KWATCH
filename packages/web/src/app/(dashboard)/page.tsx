@@ -32,7 +32,8 @@ export default function DashboardPage() {
         case 'up':
           return s.isUp && !s.defacementStatus?.isDefaced && (s.responseTimeMs == null || s.responseTimeMs <= 3000);
         case 'warning':
-          return s.isUp && s.responseTimeMs != null && s.responseTimeMs > 3000;
+          // 정상 응답이지만 느린 경우만 (isUp=true 필수)
+          return s.isUp && !s.defacementStatus?.isDefaced && s.responseTimeMs != null && s.responseTimeMs > 3000;
         case 'down':
           return !s.isUp;
         case 'defaced':

@@ -1,6 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { getRedisClient } from '../config/redis';
 import { getDbClient } from '../config/database';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 import { defacementService } from '../services/DefacementService';
 import { alertService } from '../services/AlertService';
@@ -34,12 +35,12 @@ function getAlertConfig(result: HybridDefacementResult): {
         reason: `새 외부 도메인 감지: ${result.detectionDetails.newDomains.join(', ')}`,
       };
     }
-    // 구조 변경 → CRITICAL, 2회
-    if (!result.detectionDetails.structuralMatch) {
+    // 구조 대폭 변경 (80% 미만) → CRITICAL, 2회
+    if (result.detectionDetails.structuralScore < 80) {
       return {
         severity: Severity.CRITICAL,
         requiredConsecutive: CONSECUTIVE_THRESHOLD_CRITICAL_STRUCTURE,
-        reason: '페이지 구조 변경 감지',
+        reason: `페이지 구조 변경 감지 (구조 유사도: ${result.detectionDetails.structuralScore.toFixed(1)}%)`,
       };
     }
   }
@@ -169,7 +170,7 @@ export async function initDefacementWorker(): Promise<Worker<DefacementJobData>>
     },
     {
       connection: redis as any,
-      concurrency: 5,
+      concurrency: config.monitoring.defacementConcurrency,
     },
   );
 

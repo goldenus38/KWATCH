@@ -4,9 +4,7 @@ import { logger } from '../utils/logger';
 import {
   MonitoringStatus,
   DashboardSummary,
-  MonitoringJobData,
 } from '../types';
-import { emitStatusUpdate } from '../websocket/socketServer';
 
 /**
  * 연속 실패 판정 임계값
@@ -99,7 +97,8 @@ export class MonitoringService {
       clearTimeout(timeoutId);
 
       const responseTimeMs = Date.now() - startTime;
-      const isUp = response.status >= 200 && response.status < 300;
+      // 서버가 응답하면 정상 (4xx도 서버 작동 중), 5xx만 장애로 판정
+      const isUp = response.status < 500;
 
       return {
         statusCode: response.status,
@@ -113,7 +112,8 @@ export class MonitoringService {
       let errorMessage = 'Unknown error';
 
       if (error instanceof Error) {
-        errorMessage = error.message;
+        const cause = (error as any).cause;
+        errorMessage = cause?.message || cause?.code || error.message;
         if (error.name === 'AbortError') {
           errorMessage = `Request timeout (${timeoutSeconds}s)`;
         }
@@ -128,86 +128,6 @@ export class MonitoringService {
         errorMessage,
         finalUrl: null,
       };
-    }
-  }
-
-  /**
-   * 모든 활성 웹사이트를 체크하고 결과를 데이터베이스에 저장합니다
-   * @returns 체크된 웹사이트 수
-   */
-  async checkAllWebsites(): Promise<number> {
-    try {
-      const websites = await this.prisma.website.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          url: true,
-          timeoutSeconds: true,
-        },
-      });
-
-      const CONCURRENCY = 20;
-      let checkedCount = 0;
-      let running = 0;
-      let idx = 0;
-
-      await new Promise<void>((resolve, reject) => {
-        if (websites.length === 0) {
-          resolve();
-          return;
-        }
-
-        const runNext = () => {
-          while (running < CONCURRENCY && idx < websites.length) {
-            const website = websites[idx++];
-            running++;
-
-            this.checkWebsite(website.url, website.timeoutSeconds)
-              .then(async (result) => {
-                try {
-                  await this.prisma.monitoringResult.create({
-                    data: {
-                      websiteId: website.id,
-                      statusCode: result.statusCode,
-                      responseTimeMs: result.responseTimeMs,
-                      isUp: result.isUp,
-                      errorMessage: result.errorMessage,
-                      finalUrl: result.finalUrl,
-                    },
-                  });
-
-                  const status = await this.getStatus(website.id);
-                  if (status) {
-                    emitStatusUpdate(website.id, status);
-                  }
-
-                  checkedCount++;
-                } catch (saveError) {
-                  logger.warn(`Failed to save result for website ${website.id}:`, saveError);
-                }
-              })
-              .catch((err) => {
-                logger.warn(`Check failed for website ${website.id}:`, err);
-              })
-              .finally(() => {
-                running--;
-                if (running === 0 && idx >= websites.length) {
-                  resolve();
-                } else {
-                  runNext();
-                }
-              });
-          }
-        };
-
-        runNext();
-      });
-
-      logger.info(`Health check completed for ${checkedCount} websites`);
-      return checkedCount;
-    } catch (error) {
-      logger.error('checkAllWebsites failed:', error);
-      throw error;
     }
   }
 
@@ -424,7 +344,8 @@ export class MonitoringService {
 
         if (isDown) {
           down++;
-        } else if (latestResult.responseTimeMs && latestResult.responseTimeMs > 3000) {
+        } else if (latestResult.isUp && latestResult.responseTimeMs && latestResult.responseTimeMs > 3000) {
+          // 정상 응답이지만 느린 경우만 경고 (실패 시 responseTimeMs는 타임아웃 소요시간이므로 제외)
           warning++;
         } else {
           up++;

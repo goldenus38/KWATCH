@@ -120,6 +120,7 @@ model DefacementBaseline {
   hash             String?  @db.VarChar(64)
   htmlHash         String?  @map("html_hash") @db.VarChar(64)
   structuralHash   String?  @map("structural_hash") @db.VarChar(64)
+  structuralData   Json?    @map("structural_data")
   domainWhitelist  Json?    @map("domain_whitelist")
   createdBy        Int?     @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz

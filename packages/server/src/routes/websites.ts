@@ -10,16 +10,55 @@ import { schedulerService } from '../services/SchedulerService';
 const router = Router();
 
 /**
- * URL 형식 검증
+ * HTML 엔티티를 디코딩합니다 (&amp; → &, &lt; → < 등)
+ * 엑셀/HTML 소스에서 복사한 데이터의 엔티티 오염 방지
+ */
+const decodeHtmlEntities = (str: string): string => {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_match, dec) => String.fromCharCode(dec));
+};
+
+/**
+ * URL 형식 검증 (http:// 또는 https:// 필수)
  */
 const isValidUrl = (url: string): boolean => {
   try {
-    new URL(url);
-    return true;
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
   } catch {
     return false;
   }
 };
+
+/**
+ * GET /api/websites/export
+ * 전체 웹사이트 목록 내보내기 (admin only, pagination 없음)
+ */
+router.get('/export', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const prisma = getDbClient();
+
+    const websites = await prisma.website.findMany({
+      include: {
+        category: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    sendSuccess(res, websites);
+  } catch (error) {
+    logger.error('웹사이트 목록 내보내기 오류:', error);
+    sendError(res, 'EXPORT_ERROR', '웹사이트 목록 내보내기 중 오류가 발생했습니다.', 500);
+  }
+});
 
 /**
  * GET /api/websites
@@ -94,7 +133,7 @@ router.get('/', authenticate, async (req, res) => {
  */
 router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) => {
   try {
-    const {
+    let {
       url,
       name,
       organizationName,
@@ -106,6 +145,11 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
     } = req.body as WebsiteCreateInput;
     const prisma = getDbClient();
 
+    // HTML 엔티티 디코딩
+    if (name) name = decodeHtmlEntities(name);
+    if (organizationName) organizationName = decodeHtmlEntities(organizationName);
+    if (description) description = decodeHtmlEntities(description);
+
     // 입력 유효성 검사
     if (!url || !name) {
       sendError(res, 'INVALID_INPUT', 'URL과 웹사이트명은 필수입니다.', 400);
@@ -114,7 +158,7 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
 
     // URL 형식 검증
     if (!isValidUrl(url)) {
-      sendError(res, 'INVALID_URL', '유효한 URL 형식이 아닙니다.', 400);
+      sendError(res, 'INVALID_URL', 'URL은 http:// 또는 https://로 시작해야 합니다.', 400);
       return;
     }
 
@@ -167,7 +211,7 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
         categoryId: categoryId || null,
         description: description || null,
         checkIntervalSeconds: checkIntervalSeconds || 60,
-        timeoutSeconds: timeoutSeconds || 30,
+        timeoutSeconds: timeoutSeconds || 60,
         isActive: true,
         ...(ignoreSelectors && { ignoreSelectors }),
       },
@@ -245,6 +289,11 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
     const updates = req.body as WebsiteUpdateInput;
     const prisma = getDbClient();
 
+    // HTML 엔티티 디코딩
+    if (updates.name) updates.name = decodeHtmlEntities(updates.name);
+    if (updates.organizationName) updates.organizationName = decodeHtmlEntities(updates.organizationName);
+    if (updates.description) updates.description = decodeHtmlEntities(updates.description);
+
     if (isNaN(websiteId)) {
       sendError(res, 'INVALID_ID', '유효하지 않은 웹사이트 ID입니다.', 400);
       return;
@@ -263,7 +312,7 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
     // URL 변경 시 중복 검사
     if (updates.url && updates.url !== existingWebsite.url) {
       if (!isValidUrl(updates.url)) {
-        sendError(res, 'INVALID_URL', '유효한 URL 형식이 아닙니다.', 400);
+        sendError(res, 'INVALID_URL', 'URL은 http:// 또는 https://로 시작해야 합니다.', 400);
         return;
       }
 
@@ -406,6 +455,11 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
     for (let i = 0; i < websitesData.length; i++) {
       const website = websitesData[i];
 
+      // HTML 엔티티 디코딩
+      if (website.name) website.name = decodeHtmlEntities(website.name);
+      if (website.organizationName) website.organizationName = decodeHtmlEntities(website.organizationName);
+      if (website.description) website.description = decodeHtmlEntities(website.description);
+
       // 필수 필드 검사
       if (!website.url || !website.name) {
         result.failures.push({
@@ -422,7 +476,7 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
         result.failures.push({
           rowIndex: i + 1,
           url: website.url,
-          error: '유효한 URL 형식이 아닙니다.',
+          error: 'URL은 http:// 또는 https://로 시작해야 합니다.',
         });
         result.failureCount++;
         continue;
@@ -431,8 +485,25 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
       validatedWebsites.push({ ...website, rowIndex: i + 1 });
     }
 
-    // URL 중복 검사
-    const urls = validatedWebsites.map((w) => w.url);
+    // 파일 내 중복 URL 제거 (먼저 등장한 행 우선)
+    const seenUrls = new Set<string>();
+    const deduplicatedWebsites: typeof validatedWebsites = [];
+    for (const website of validatedWebsites) {
+      if (seenUrls.has(website.url)) {
+        result.failures.push({
+          rowIndex: website.rowIndex,
+          url: website.url,
+          error: '파일 내 중복 URL입니다.',
+        });
+        result.failureCount++;
+      } else {
+        seenUrls.add(website.url);
+        deduplicatedWebsites.push(website);
+      }
+    }
+
+    // DB 기존 URL 중복 검사
+    const urls = deduplicatedWebsites.map((w) => w.url);
     const existingUrls = await prisma.website.findMany({
       where: { url: { in: urls } },
       select: { url: true },
@@ -441,7 +512,7 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
     const existingUrlSet = new Set(existingUrls.map((w) => w.url));
 
     const finalWebsites: (WebsiteCreateInput & { rowIndex: number })[] = [];
-    for (const website of validatedWebsites) {
+    for (const website of deduplicatedWebsites) {
       if (existingUrlSet.has(website.url)) {
         result.failures.push({
           rowIndex: website.rowIndex,
@@ -494,7 +565,7 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
                 categoryId: website.categoryId || null,
                 description: website.description || null,
                 checkIntervalSeconds: website.checkIntervalSeconds || 60,
-                timeoutSeconds: website.timeoutSeconds || 30,
+                timeoutSeconds: website.timeoutSeconds || 60,
                 isActive: true,
               },
             }),

@@ -86,7 +86,7 @@ export async function initScreenshotWorker(): Promise<Worker<ScreenshotJobData>>
           // 베이스라인이 없으면 현재 스크린샷을 베이스라인으로 자동 등록
           try {
             // HTML 베이스라인 데이터 생성
-            let htmlBaselineData: { htmlHash: string; structuralHash: string; domainWhitelist: string[] } | null = null;
+            let htmlBaselineData: { htmlHash: string; structuralHash: string; structuralPaths: string[]; domainWhitelist: string[] } | null = null;
             if (screenshot.htmlContent && config.monitoring.htmlAnalysisEnabled) {
               try {
                 const website = await prisma.website.findUnique({
@@ -116,6 +116,7 @@ export async function initScreenshotWorker(): Promise<Worker<ScreenshotJobData>>
                 ...(htmlBaselineData && {
                   htmlHash: htmlBaselineData.htmlHash,
                   structuralHash: htmlBaselineData.structuralHash,
+                  structuralData: htmlBaselineData.structuralPaths,
                   domainWhitelist: htmlBaselineData.domainWhitelist,
                 }),
               },
@@ -150,7 +151,7 @@ export async function initScreenshotWorker(): Promise<Worker<ScreenshotJobData>>
     },
     {
       connection: redis as any,
-      concurrency: 5, // 동시에 5개의 스크린샷 캡처 작업 처리 (리소스 집약적)
+      concurrency: config.monitoring.screenshotConcurrency,
     },
   );
 

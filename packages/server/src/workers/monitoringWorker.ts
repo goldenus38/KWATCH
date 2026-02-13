@@ -126,7 +126,7 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
     },
     {
       connection: redis as any,
-      concurrency: 10, // 동시에 10개의 모니터링 작업 처리
+      concurrency: config.monitoring.monitoringConcurrency,
     },
   );
 

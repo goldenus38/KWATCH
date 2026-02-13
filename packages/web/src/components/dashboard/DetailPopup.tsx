@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import {
-  AreaChart,
+  ComposedChart,
   Area,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -139,7 +140,9 @@ export function DetailPopup({
     .map((r) => ({
       time: formatTime(r.checkedAt),
       responseTime: r.responseTimeMs ?? 0,
+      statusCode: r.statusCode,
       isUp: r.isUp,
+      errorMessage: r.errorMessage,
     }));
 
   // 스크린샷 URL
@@ -234,12 +237,28 @@ export function DetailPopup({
                       URL
                     </div>
                     <div className="text-dashboard-base text-kwatch-text-primary font-mono break-all">
-                      {siteStatus?.url ?? '-'}
+                      {siteStatus?.url ? (
+                        <a
+                          href={siteStatus.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-kwatch-accent hover:text-kwatch-accent-hover hover:underline"
+                        >
+                          {siteStatus.url}
+                        </a>
+                      ) : '-'}
                     </div>
                     {siteStatus?.finalUrl && siteStatus.finalUrl !== siteStatus.url && (
                       <div className="mt-1 text-dashboard-sm text-kwatch-text-secondary font-mono break-all">
                         <span className="text-kwatch-text-muted mr-1">↳ 최종 URL:</span>
-                        {siteStatus.finalUrl}
+                        <a
+                          href={siteStatus.finalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-kwatch-accent hover:text-kwatch-accent-hover hover:underline"
+                        >
+                          {siteStatus.finalUrl}
+                        </a>
                       </div>
                     )}
                   </div>
@@ -304,15 +323,15 @@ export function DetailPopup({
                 </div>
               </section>
 
-              {/* 3. 응답 시간 그래프 */}
+              {/* 3. 응답 추이 그래프 */}
               <section>
                 <h3 className="text-dashboard-base font-bold text-kwatch-text-primary mb-3">
-                  최근 응답 시간 추이
+                  최근 응답 추이
                 </h3>
-                <div className="bg-kwatch-bg-tertiary/30 rounded p-4 h-56">
+                <div className="bg-kwatch-bg-tertiary/30 rounded p-4 h-64">
                   {chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
+                      <ComposedChart data={chartData}>
                         <defs>
                           <linearGradient id="responseTimeGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
@@ -327,9 +346,18 @@ export function DetailPopup({
                           interval="preserveStartEnd"
                         />
                         <YAxis
+                          yAxisId="responseTime"
                           stroke="#94A3B8"
                           tick={{ fontSize: 11 }}
                           tickFormatter={(v: number) => `${v}ms`}
+                        />
+                        <YAxis
+                          yAxisId="statusCode"
+                          orientation="right"
+                          stroke="#64748B"
+                          tick={{ fontSize: 11 }}
+                          domain={[0, 600]}
+                          ticks={[200, 301, 403, 500]}
                         />
                         <Tooltip
                           contentStyle={{
@@ -337,17 +365,60 @@ export function DetailPopup({
                             border: '1px solid #334155',
                             borderRadius: '8px',
                             color: '#F1F5F9',
+                            fontSize: '12px',
                           }}
-                          formatter={(value: number) => [`${value}ms`, '응답 시간']}
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const data = payload[0]?.payload;
+                            const statusCode = data?.statusCode;
+                            const statusColor = !statusCode ? '#FF1744'
+                              : statusCode < 300 ? '#00C853'
+                              : statusCode < 400 ? '#42A5F5'
+                              : '#FF1744';
+                            return (
+                              <div className="bg-kwatch-bg-secondary border border-kwatch-bg-tertiary rounded-lg px-3 py-2">
+                                <div className="text-kwatch-text-secondary text-xs mb-1">{label}</div>
+                                <div className="text-kwatch-text-primary text-sm">
+                                  응답 시간: <span className="font-semibold text-kwatch-accent">{data?.responseTime}ms</span>
+                                </div>
+                                <div className="text-sm" style={{ color: statusColor }}>
+                                  HTTP: <span className="font-semibold">{statusCode ?? 'ERR'}</span>
+                                  {data?.errorMessage && !statusCode && (
+                                    <span className="text-xs text-kwatch-text-muted ml-1">({data.errorMessage})</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }}
                         />
                         <Area
+                          yAxisId="responseTime"
                           type="monotone"
                           dataKey="responseTime"
                           stroke="#3B82F6"
                           fill="url(#responseTimeGrad)"
                           strokeWidth={2}
+                          name="응답 시간"
                         />
-                      </AreaChart>
+                        <Line
+                          yAxisId="statusCode"
+                          type="stepAfter"
+                          dataKey="statusCode"
+                          stroke="#64748B"
+                          strokeWidth={1.5}
+                          dot={({ cx, cy, payload }: any) => {
+                            if (!payload?.statusCode) {
+                              return <circle cx={cx} cy={cy || 0} r={3} fill="#FF1744" stroke="none" />;
+                            }
+                            const color = payload.statusCode < 300 ? '#00C853'
+                              : payload.statusCode < 400 ? '#42A5F5'
+                              : '#FF1744';
+                            return <circle cx={cx} cy={cy} r={3} fill={color} stroke="none" />;
+                          }}
+                          name="HTTP 상태"
+                          connectNulls={false}
+                        />
+                      </ComposedChart>
                     </ResponsiveContainer>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-kwatch-text-muted">
@@ -474,8 +545,8 @@ export function DetailPopup({
                       </div>
                     )}
 
-                    {/* 이미지 비교 그리드 */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* 이미지 비교 그리드 (3컬럼: 베이스라인 | 현재 | 차이분석) */}
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
                         <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
                           베이스라인 스크린샷
@@ -490,6 +561,24 @@ export function DetailPopup({
                           ) : (
                             <span className="text-kwatch-text-muted text-sm">
                               베이스라인 없음
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
+                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
+                          현재 스크린샷
+                        </div>
+                        <div className="h-48 bg-black flex items-center justify-center">
+                          {latestDefacement?.currentScreenshotId ? (
+                            <img
+                              src={`${API_BASE_URL}/api/screenshots/image/${latestDefacement.currentScreenshotId}`}
+                              alt={`${websiteName} 현재 스크린샷`}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-kwatch-text-muted text-sm">
+                              현재 스크린샷 없음
                             </span>
                           )}
                         </div>

@@ -83,20 +83,15 @@ export class SchedulerService {
   /**
    * 특정 웹사이트의 모니터링을 스케줄합니다
    * @param website 웹사이트 정보 {id, url, timeoutSeconds, checkIntervalSeconds}
+   * @param initialDelayMs 첫 실행까지 지연 시간 (ms, staggered scheduling용)
    */
-  async scheduleMonitoring(website: any): Promise<void> {
-    // TODO: 큐가 초기화되었는지 확인
-    // TODO: 기존 반복 작업 제거
-    // TODO: 새로운 반복 작업 등록 (cron 또는 repeat 옵션 사용)
-    //   - repeat: { every: checkIntervalSeconds * 1000 }
-    // TODO: 즉시 실행하거나 다음 주기에 실행할지 결정
-
+  async scheduleMonitoring(website: any, initialDelayMs: number = 0): Promise<void> {
     try {
       if (!this.monitoringQueue) {
         throw new Error('Monitoring queue not initialized');
       }
 
-      // TODO: 기존 반복 작업 제거
+      // 기존 반복 작업 제거
       const existingJobs = await this.monitoringQueue.getRepeatableJobs();
       for (const job of existingJobs) {
         if (job.key.includes(`monitoring:${website.id}`)) {
@@ -104,7 +99,7 @@ export class SchedulerService {
         }
       }
 
-      // TODO: 새 반복 작업 등록
+      // 새 반복 작업 등록 (staggered start)
       await this.monitoringQueue.add(
         `monitoring:${website.id}`,
         {
@@ -115,8 +110,8 @@ export class SchedulerService {
         {
           repeat: {
             every: website.checkIntervalSeconds * 1000,
-            immediately: true,
           },
+          delay: initialDelayMs,
           removeOnComplete: true,
           removeOnFail: false,
           backoff: {
@@ -127,7 +122,8 @@ export class SchedulerService {
       );
 
       logger.info(
-        `Monitoring scheduled for website ${website.id}: every ${website.checkIntervalSeconds}s`,
+        `Monitoring scheduled for website ${website.id}: every ${website.checkIntervalSeconds}s` +
+          (initialDelayMs > 0 ? ` (initial delay: ${(initialDelayMs / 1000).toFixed(1)}s)` : ''),
       );
     } catch (error) {
       logger.error(`scheduleMonitoring failed for website ${website.id}:`, error);
@@ -137,25 +133,26 @@ export class SchedulerService {
 
   /**
    * 모든 활성 웹사이트의 모니터링을 스케줄합니다
+   * 첫 실행을 checkInterval 내에 균등 분산 (thundering herd 방지)
    */
   async scheduleAllWebsites(): Promise<void> {
-    // TODO: 모든 활성 웹사이트 조회 (is_active=true)
-    // TODO: 각 웹사이트별 scheduleMonitoring() 호출
-    // TODO: 스케줄링 완료 후 로그 기록
-
     try {
       const websites = await this.prisma.website.findMany({
         where: { isActive: true },
       });
 
-      logger.info(`Scheduling monitoring for ${websites.length} websites`);
+      const total = websites.length;
+      const staggerWindowMs = config.monitoring.staggerWindowSeconds * 1000;
+      logger.info(`Scheduling monitoring for ${total} websites (staggered over ${config.monitoring.staggerWindowSeconds}s window)`);
 
-      // TODO: 병렬 처리 (Promise.all)
-      for (const website of websites) {
-        await this.scheduleMonitoring(website);
+      for (let i = 0; i < total; i++) {
+        const website = websites[i];
+        // 첫 실행을 stagger 윈도우 내에 균등 분산 (thundering herd 방지)
+        const staggerDelayMs = Math.floor((i / total) * staggerWindowMs);
+        await this.scheduleMonitoring(website, staggerDelayMs);
       }
 
-      logger.info(`All websites scheduled for monitoring`);
+      logger.info(`All ${total} websites scheduled for monitoring (staggered over ${config.monitoring.staggerWindowSeconds}s)`);
     } catch (error) {
       logger.error('scheduleAllWebsites failed:', error);
       throw error;
