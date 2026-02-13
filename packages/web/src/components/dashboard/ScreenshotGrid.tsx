@@ -11,6 +11,7 @@ interface ScreenshotGridProps {
   itemsPerPage: number;
   totalPages: number;
   onSiteClick: (websiteId: number) => void;
+  onPageChange: (page: number) => void;
 }
 
 /**
@@ -25,6 +26,7 @@ export function ScreenshotGrid({
   itemsPerPage,
   totalPages,
   onSiteClick,
+  onPageChange,
 }: ScreenshotGridProps) {
   // 상태별 정렬 (비정상이 먼저 나타남)
   const sortedStatuses = useMemo(() => {
@@ -116,12 +118,22 @@ export function ScreenshotGrid({
     </div>
   );
 
+  const handlePrev = () => {
+    const prevPage = currentPage === 0 ? totalPages - 1 : currentPage - 1;
+    onPageChange(prevPage);
+  };
+
+  const handleNext = () => {
+    const nextPage = (currentPage + 1) % totalPages;
+    onPageChange(nextPage);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {statuses.length > 0 ? (
         <>
-          {/* 슬라이드 컨테이너 */}
-          <div className="flex-1 overflow-hidden">
+          {/* 슬라이드 컨테이너 + 화살표 */}
+          <div className="flex-1 overflow-hidden relative">
             <div
               className={`flex h-full ${enableTransition ? 'transition-transform duration-700 ease-in-out' : ''}`}
               style={{ transform: `translateX(-${slideIndex * 100}%)` }}
@@ -134,6 +146,30 @@ export function ScreenshotGrid({
               {totalPages > 1 && pages[0] &&
                 renderPage(pages[0], 'page-clone')}
             </div>
+
+            {/* 좌/우 화살표 버튼 */}
+            {totalPages > 1 && (
+              <>
+                <button
+                  onClick={handlePrev}
+                  className="absolute left-1 top-1/2 -translate-y-1/2 z-10 w-8 h-16 flex items-center justify-center rounded bg-kwatch-bg-secondary/60 hover:bg-kwatch-bg-tertiary/80 text-kwatch-text-secondary hover:text-kwatch-text-primary transition-all"
+                  aria-label="이전 페이지"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleNext}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 z-10 w-8 h-16 flex items-center justify-center rounded bg-kwatch-bg-secondary/60 hover:bg-kwatch-bg-tertiary/80 text-kwatch-text-secondary hover:text-kwatch-text-primary transition-all"
+                  aria-label="다음 페이지"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </>
+            )}
           </div>
 
           {/* 페이지네이션 - 얇은 바 */}
@@ -144,13 +180,15 @@ export function ScreenshotGrid({
               </span>
               <div className="flex gap-1.5">
                 {Array.from({ length: totalPages }, (_, i) => i).map((page) => (
-                  <div
+                  <button
                     key={page}
-                    className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    onClick={() => onPageChange(page)}
+                    className={`h-1.5 rounded-full transition-all cursor-pointer hover:bg-kwatch-accent/70 ${
                       page === currentPage
                         ? 'bg-kwatch-accent w-3'
-                        : 'bg-kwatch-bg-tertiary'
+                        : 'bg-kwatch-bg-tertiary w-1.5 hover:w-2'
                     }`}
+                    aria-label={`${page + 1} 페이지로 이동`}
                   />
                 ))}
               </div>

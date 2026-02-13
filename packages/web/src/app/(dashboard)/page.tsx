@@ -135,6 +135,7 @@ export default function DashboardPage() {
             itemsPerPage={itemsPerPage}
             totalPages={totalPages}
             onSiteClick={handleSiteClick}
+            onPageChange={setCurrentPage}
           />
         )}
       </div>

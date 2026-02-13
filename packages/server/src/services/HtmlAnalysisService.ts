@@ -36,6 +36,25 @@ export class HtmlAnalysisService {
       'img[src*="beacon"]',
       // nonce 속성 제거
       'script[nonce]',
+      // 동적 DOM 요소 (매 로드마다 구조가 달라짐)
+      'table',
+      'svg',
+      'canvas',
+      '[role="grid"]',
+      '[role="table"]',
+      '[class*="chart"]',
+      '[class*="graph"]',
+      '[class*="slider"]',
+      '[class*="carousel"]',
+      '[class*="swiper"]',
+      '[class*="ticker"]',
+      '[class*="marquee"]',
+      'ul.pagination',
+      'nav.pagination',
+      '[class*="paging"]',
+      '[class*="tab-content"]',
+      '[class*="tabpanel"]',
+      'select',
     ];
 
     // 기본 셀렉터 제거

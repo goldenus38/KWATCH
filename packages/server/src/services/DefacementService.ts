@@ -283,8 +283,36 @@ export class DefacementService {
         await fs.mkdir(this.diffDir, { recursive: true });
         const diffFilename = `${websiteId}_${Date.now()}_diff.png`;
         diffImagePath = path.join(this.diffDir, diffFilename);
-        const diffBuffer = PNG.sync.write(diffPng);
-        await fs.writeFile(diffImagePath, diffBuffer);
+
+        // 현재 스크린샷 위에 변경 영역을 빨간 반투명 오버레이로 합성
+        const overlayPng = new PNG({ width: imgWidth, height: imgHeight });
+        const diffData = diffPng.data;
+        const currentData = currentPng.data;
+        const overlayData = overlayPng.data;
+
+        for (let i = 0; i < totalPixels; i++) {
+          const idx = i * 4;
+          // pixelmatch diff에서 빨간 픽셀(변경됨)인지 확인
+          const isChanged = diffData[idx] > 200 && diffData[idx + 1] < 100 && diffData[idx + 2] < 100;
+
+          if (isChanged) {
+            // 변경된 픽셀: 현재 스크린샷 + 빨간 오버레이 블렌딩 (60%)
+            const alpha = 0.6;
+            overlayData[idx] = Math.round(currentData[idx] * (1 - alpha) + 255 * alpha);     // R
+            overlayData[idx + 1] = Math.round(currentData[idx + 1] * (1 - alpha) + 0 * alpha); // G
+            overlayData[idx + 2] = Math.round(currentData[idx + 2] * (1 - alpha) + 0 * alpha); // B
+            overlayData[idx + 3] = 255; // A
+          } else {
+            // 변경되지 않은 픽셀: 현재 스크린샷을 어둡게 (50%)
+            overlayData[idx] = Math.round(currentData[idx] * 0.5);     // R
+            overlayData[idx + 1] = Math.round(currentData[idx + 1] * 0.5); // G
+            overlayData[idx + 2] = Math.round(currentData[idx + 2] * 0.5); // B
+            overlayData[idx + 3] = 255; // A
+          }
+        }
+
+        const overlayBuffer = PNG.sync.write(overlayPng);
+        await fs.writeFile(diffImagePath, overlayBuffer);
       }
 
       return { similarityScore, diffImagePath };
