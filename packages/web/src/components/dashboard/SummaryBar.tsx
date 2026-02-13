@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { DashboardSummary } from '@/types';
+import { DashboardSummary, SummaryFilterType } from '@/types';
 import { formatTime } from '@/lib/utils';
 import { STATUS_COLORS } from '@/lib/constants';
 
@@ -11,6 +11,8 @@ interface SummaryBarProps {
   isLoading?: boolean;
   isRotating?: boolean;
   onToggleRotation?: () => void;
+  activeFilter?: SummaryFilterType;
+  onFilterChange?: (filter: SummaryFilterType) => void;
 }
 
 /**
@@ -23,7 +25,13 @@ export function SummaryBar({
   isLoading = false,
   isRotating = true,
   onToggleRotation,
+  activeFilter,
+  onFilterChange,
 }: SummaryBarProps) {
+  const handleFilterClick = (filter: SummaryFilterType) => {
+    if (!onFilterChange) return;
+    onFilterChange(activeFilter === filter ? null : filter);
+  };
   return (
     <div className="w-full bg-kwatch-bg-secondary border-b border-kwatch-bg-tertiary px-6 py-4">
       <div className="flex items-center justify-between">
@@ -55,17 +63,31 @@ export function SummaryBar({
         ) : summary ? (
           <div className="flex items-center gap-8">
             {/* 전체 */}
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleFilterClick(null)}
+              className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                activeFilter === null || activeFilter === undefined
+                  ? 'bg-kwatch-bg-tertiary ring-2 ring-kwatch-accent'
+                  : 'hover:bg-kwatch-bg-tertiary'
+              }`}
+            >
               <span className="text-dashboard-lg font-bold text-kwatch-text-primary">
                 {summary.total}
               </span>
               <span className="text-dashboard-sm text-kwatch-text-secondary">
                 전체
               </span>
-            </div>
+            </button>
 
             {/* 정상 */}
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleFilterClick('up')}
+              className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                activeFilter === 'up'
+                  ? 'bg-kwatch-bg-tertiary ring-2 ring-kwatch-status-normal'
+                  : 'hover:bg-kwatch-bg-tertiary'
+              }`}
+            >
               <div
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: STATUS_COLORS.normal.dot }}
@@ -76,10 +98,17 @@ export function SummaryBar({
               <span className="text-dashboard-sm text-kwatch-text-secondary">
                 정상
               </span>
-            </div>
+            </button>
 
             {/* 경고 */}
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleFilterClick('warning')}
+              className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                activeFilter === 'warning'
+                  ? 'bg-kwatch-bg-tertiary ring-2 ring-kwatch-status-warning'
+                  : 'hover:bg-kwatch-bg-tertiary'
+              }`}
+            >
               <div
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: STATUS_COLORS.warning.dot }}
@@ -90,10 +119,17 @@ export function SummaryBar({
               <span className="text-dashboard-sm text-kwatch-text-secondary">
                 경고
               </span>
-            </div>
+            </button>
 
             {/* 장애 */}
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleFilterClick('down')}
+              className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                activeFilter === 'down'
+                  ? 'bg-kwatch-bg-tertiary ring-2 ring-kwatch-status-critical'
+                  : 'hover:bg-kwatch-bg-tertiary'
+              }`}
+            >
               <div
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: STATUS_COLORS.critical.dot }}
@@ -104,10 +140,17 @@ export function SummaryBar({
               <span className="text-dashboard-sm text-kwatch-text-secondary">
                 장애
               </span>
-            </div>
+            </button>
 
             {/* 위변조 */}
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleFilterClick('defaced')}
+              className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                activeFilter === 'defaced'
+                  ? 'bg-kwatch-bg-tertiary ring-2 ring-kwatch-status-critical'
+                  : 'hover:bg-kwatch-bg-tertiary'
+              }`}
+            >
               <div
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: STATUS_COLORS.critical.dot }}
@@ -118,7 +161,7 @@ export function SummaryBar({
               <span className="text-dashboard-sm text-kwatch-text-secondary">
                 위변조
               </span>
-            </div>
+            </button>
 
             {/* 마지막 스캔 시간 */}
             <div className="flex items-center gap-2 text-kwatch-text-secondary text-dashboard-sm">

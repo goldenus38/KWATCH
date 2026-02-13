@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMonitoringData } from '@/hooks/useMonitoringData';
 import { useAutoRotation } from '@/hooks/useAutoRotation';
 import { connectSocket } from '@/lib/socket';
@@ -9,7 +9,7 @@ import { SummaryBar } from '@/components/dashboard/SummaryBar';
 import { ScreenshotGrid } from '@/components/dashboard/ScreenshotGrid';
 import { AlertTimeline } from '@/components/dashboard/AlertTimeline';
 import { DetailPopup } from '@/components/dashboard/DetailPopup';
-import type { MonitoringStatus } from '@/types';
+import type { MonitoringStatus, SummaryFilterType } from '@/types';
 
 export default function DashboardPage() {
   const {
@@ -23,9 +23,28 @@ export default function DashboardPage() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<MonitoringStatus | null>(null);
+  const [statusFilter, setStatusFilter] = useState<SummaryFilterType>(null);
+
+  const filteredStatuses = useMemo(() => {
+    if (!statusFilter) return statuses;
+    return statuses.filter((s) => {
+      switch (statusFilter) {
+        case 'up':
+          return s.isUp && !s.defacementStatus?.isDefaced && (s.responseTimeMs == null || s.responseTimeMs <= 3000);
+        case 'warning':
+          return s.isUp && s.responseTimeMs != null && s.responseTimeMs > 3000;
+        case 'down':
+          return !s.isUp;
+        case 'defaced':
+          return s.defacementStatus?.isDefaced === true;
+        default:
+          return true;
+      }
+    });
+  }, [statuses, statusFilter]);
 
   const itemsPerPage = DEFAULT_ITEMS_PER_PAGE;
-  const totalPages = Math.max(1, Math.ceil(statuses.length / itemsPerPage));
+  const totalPages = Math.max(1, Math.ceil(filteredStatuses.length / itemsPerPage));
 
   const {
     currentPage,
@@ -70,6 +89,8 @@ export default function DashboardPage() {
           isLoading={isLoading}
           isRotating={isRotating}
           onToggleRotation={toggleRotation}
+          activeFilter={statusFilter}
+          onFilterChange={(f) => { setStatusFilter(f); setCurrentPage(0); }}
         />
       </div>
 
@@ -108,7 +129,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <ScreenshotGrid
-            statuses={statuses}
+            statuses={filteredStatuses}
             currentPage={currentPage}
             itemsPerPage={itemsPerPage}
             totalPages={totalPages}

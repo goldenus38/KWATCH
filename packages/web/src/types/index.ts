@@ -213,6 +213,9 @@ export interface DefacementConfig {
   htmlAnalysisEnabled: boolean;
 }
 
+// 대시보드 상태 필터 타입
+export type SummaryFilterType = 'up' | 'down' | 'warning' | 'defaced' | null;
+
 // ============================================
 // 대시보드 관련
 // ============================================
