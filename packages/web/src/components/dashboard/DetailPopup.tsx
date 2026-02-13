@@ -261,14 +261,14 @@ export function DetailPopup({
                       {siteStatus?.defacementStatus ? (
                         siteStatus.defacementStatus.isDefaced ? (
                           <span className="text-kwatch-status-critical">
-                            위변조 감지 (유사도: {(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore)?.toFixed(1) ?? '-'}%)
+                            위변조 감지 (유사도: {siteStatus.defacementStatus.htmlSimilarityScore != null || siteStatus.defacementStatus.similarityScore != null ? Number(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore).toFixed(1) : '-'}%)
                             {siteStatus.defacementStatus.detectionMethod === 'hybrid' && (
                               <span className="ml-1 px-1.5 py-0.5 bg-kwatch-accent/20 text-kwatch-accent rounded text-xs font-normal">하이브리드</span>
                             )}
                           </span>
                         ) : (
                           <span className="text-kwatch-status-normal">
-                            정상 (유사도: {(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore)?.toFixed(1) ?? '-'}%)
+                            정상 (유사도: {siteStatus.defacementStatus.htmlSimilarityScore != null || siteStatus.defacementStatus.similarityScore != null ? Number(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore).toFixed(1) : '-'}%)
                             {siteStatus.defacementStatus.detectionMethod === 'hybrid' && (
                               <span className="ml-1 px-1.5 py-0.5 bg-kwatch-accent/20 text-kwatch-accent rounded text-xs font-normal">하이브리드</span>
                             )}
@@ -402,8 +402,8 @@ export function DetailPopup({
                         {latestDefacement.htmlSimilarityScore != null ? '하이브리드' : '픽셀 전용'}
                       </span>
                       <span className="text-dashboard-sm font-normal text-kwatch-text-secondary">
-                        종합 유사도: {(latestDefacement.htmlSimilarityScore ?? latestDefacement.similarityScore) != null
-                          ? `${(latestDefacement.htmlSimilarityScore ?? latestDefacement.similarityScore)!.toFixed(1)}%`
+                        종합 유사도: {latestDefacement.htmlSimilarityScore != null || latestDefacement.similarityScore != null
+                          ? `${Number(latestDefacement.htmlSimilarityScore ?? latestDefacement.similarityScore).toFixed(1)}%`
                           : '-'}
                       </span>
                     </>
@@ -435,7 +435,7 @@ export function DetailPopup({
                       ) : (
                         <ScoreBar
                           label="픽셀 유사도"
-                          score={latestDefacement.similarityScore ?? 0}
+                          score={Number(latestDefacement.similarityScore ?? 0)}
                         />
                       )}
                     </div>
