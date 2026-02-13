@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { API_BASE_URL } from '@/lib/constants';
 import type { AlertChannel, User, DefacementConfig } from '@/types';
 
 export default function SettingsPage() {
@@ -57,7 +58,7 @@ export default function SettingsPage() {
     const poll = () => {
       elapsed += 2;
       setRestartStatus(`서버 재시작 중... (${elapsed}초 경과)`);
-      fetch('/api/health')
+      fetch(`${API_BASE_URL}/api/health`)
         .then((res) => {
           if (res.ok) {
             setRestartStatus('서버가 복구되었습니다. 페이지를 새로고침합니다...');
