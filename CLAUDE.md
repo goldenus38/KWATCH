@@ -733,6 +733,9 @@ volumes:
 - **Rate Limiter**: 스크린샷 이미지 엔드포인트는 rate limit 제외, API는 15분/1000회
 - **CORP 헤더**: 스크린샷 이미지에 `Cross-Origin-Resource-Policy: cross-origin` 설정 (cross-origin img 로드 허용)
 - **인증 미들웨어**: Role 비교 시 case-insensitive (Prisma enum은 대문자, 코드는 소문자)
+- **최종 리다이렉트 URL 기록**: `finalUrl` 필드로 `response.url` 저장 (DB `monitoring_results.final_url` 컬럼), DetailPopup에서 요청 URL과 다를 때 최종 URL 표시
+- **대시보드 기관명 표시**: SiteCard/DetailPopup에서 `organizationName`이 있으면 "기관명 사이트명" 형식으로 표시, MonitoringStatus API 응답에 `organizationName` 필드 추가
+- **관리 페이지 컬럼 순서 변경**: 카테고리→기관명→사이트명→URL 순서로 가독성 개선
 - **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 57개, HtmlAnalysisService 29개 포함)
 - **위변조 탐지 분석 UI** (Phase 7):
   - DetailPopup: "베이스라인 비교" → "위변조 탐지 분석"으로 교체
@@ -803,6 +806,15 @@ v1.0 전체 코드 리뷰 수행 후 9건 수정 완료:
 
 **React 최적화 (1건):**
 - `ScreenshotGrid.tsx`: 빈 슬롯 key에 페이지 컨텍스트 포함 (`empty-${currentPage}-${i}`)
+
+### 코드 리뷰 3차 (v1.1.0, 2026-02-13)
+
+v1.1.0 기능 추가(finalUrl, organizationName 대시보드 노출) 코드 리뷰:
+
+**결과: 이상 없음** — 타입 안전성, 테스트, 기능 정합성, 보안 모두 통과
+
+**테스트 보완 (1건):**
+- `MonitoringService.test.ts`: mock 데이터에 `organizationName`, `finalUrl` 추가 + `getAllStatuses` 테스트에 새 필드 assertion 추가
 
 ### 알려진 이슈
 

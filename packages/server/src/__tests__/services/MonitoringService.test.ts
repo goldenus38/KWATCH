@@ -73,32 +73,32 @@ describe('MonitoringService', () => {
       prismaMock.website.findMany.mockResolvedValueOnce([
         // up site
         {
-          id: 1, isActive: true,
-          monitoringResults: [{ isUp: true, responseTimeMs: 100, checkedAt: now }],
+          id: 1, isActive: true, organizationName: '테스트기관A',
+          monitoringResults: [{ isUp: true, responseTimeMs: 100, checkedAt: now, finalUrl: 'https://a.com' }],
           defacementChecks: [],
         },
         // down site (5 consecutive failures required)
         {
-          id: 2, isActive: true,
+          id: 2, isActive: true, organizationName: '테스트기관B',
           monitoringResults: [
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
+            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
+            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
+            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
+            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
+            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
           ],
           defacementChecks: [],
         },
         // warning (slow) site
         {
-          id: 3, isActive: true,
-          monitoringResults: [{ isUp: true, responseTimeMs: 5000, checkedAt: now }],
+          id: 3, isActive: true, organizationName: null,
+          monitoringResults: [{ isUp: true, responseTimeMs: 5000, checkedAt: now, finalUrl: 'https://c.com/redirected' }],
           defacementChecks: [],
         },
         // defaced site (3 consecutive detections required)
         {
-          id: 4, isActive: true,
-          monitoringResults: [{ isUp: true, responseTimeMs: 200, checkedAt: now }],
+          id: 4, isActive: true, organizationName: '테스트기관D',
+          monitoringResults: [{ isUp: true, responseTimeMs: 200, checkedAt: now, finalUrl: 'https://d.com' }],
           defacementChecks: [
             { isDefaced: true },
             { isDefaced: true },
@@ -107,7 +107,7 @@ describe('MonitoringService', () => {
         },
         // unknown site (no results)
         {
-          id: 5, isActive: true,
+          id: 5, isActive: true, organizationName: null,
           monitoringResults: [],
           defacementChecks: [],
         },
@@ -141,13 +141,13 @@ describe('MonitoringService', () => {
       const now = new Date();
       prismaMock.website.findMany.mockResolvedValueOnce([
         {
-          id: 1, name: 'Site A', url: 'https://a.com', isActive: true,
-          monitoringResults: [{ statusCode: 200, responseTimeMs: 50, isUp: true, errorMessage: null, checkedAt: now }],
+          id: 1, name: 'Site A', url: 'https://a.com', isActive: true, organizationName: '기관A',
+          monitoringResults: [{ statusCode: 200, responseTimeMs: 50, isUp: true, errorMessage: null, checkedAt: now, finalUrl: 'https://a.com/' }],
           screenshots: [{ id: BigInt(10), capturedAt: now }],
           defacementChecks: [],
         },
         {
-          id: 2, name: 'Site B', url: 'https://b.com', isActive: true,
+          id: 2, name: 'Site B', url: 'https://b.com', isActive: true, organizationName: null,
           monitoringResults: [],
           screenshots: [],
           defacementChecks: [],
@@ -159,9 +159,13 @@ describe('MonitoringService', () => {
       expect(statuses).toHaveLength(2);
       expect(statuses[0].websiteId).toBe(1);
       expect(statuses[0].websiteName).toBe('Site A');
+      expect(statuses[0].organizationName).toBe('기관A');
       expect(statuses[0].isUp).toBe(true);
+      expect(statuses[0].finalUrl).toBe('https://a.com/');
       expect(statuses[0].screenshotUrl).toBe('/api/screenshots/image/10');
       expect(statuses[1].isUp).toBe(false);
+      expect(statuses[1].organizationName).toBeNull();
+      expect(statuses[1].finalUrl).toBeNull();
       expect(statuses[1].screenshotUrl).toBeNull();
     });
   });

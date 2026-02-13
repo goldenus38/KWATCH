@@ -59,6 +59,7 @@ export class MonitoringService {
     responseTimeMs: number;
     isUp: boolean;
     errorMessage: string | null;
+    finalUrl: string | null;
   }> {
     const startTime = Date.now();
 
@@ -105,6 +106,7 @@ export class MonitoringService {
         responseTimeMs,
         isUp,
         errorMessage: null,
+        finalUrl: response.url || null,
       };
     } catch (error: unknown) {
       const responseTimeMs = Date.now() - startTime;
@@ -124,6 +126,7 @@ export class MonitoringService {
         responseTimeMs,
         isUp: false,
         errorMessage,
+        finalUrl: null,
       };
     }
   }
@@ -169,6 +172,7 @@ export class MonitoringService {
                       responseTimeMs: result.responseTimeMs,
                       isUp: result.isUp,
                       errorMessage: result.errorMessage,
+                      finalUrl: result.finalUrl,
                     },
                   });
 
@@ -258,7 +262,9 @@ export class MonitoringService {
       return {
         websiteId: website.id,
         websiteName: website.name,
+        organizationName: website.organizationName,
         url: website.url,
+        finalUrl: latestResult?.finalUrl ?? null,
         statusCode: latestResult?.statusCode ?? null,
         responseTimeMs: latestResult?.responseTimeMs ?? null,
         isUp: latestResult ? !isDown : false,
@@ -331,7 +337,9 @@ export class MonitoringService {
         return {
           websiteId: website.id,
           websiteName: website.name,
+          organizationName: website.organizationName,
           url: website.url,
+          finalUrl: latestResult?.finalUrl ?? null,
           statusCode: latestResult?.statusCode ?? null,
           responseTimeMs: latestResult?.responseTimeMs ?? null,
           isUp: latestResult ? !isDown : false,

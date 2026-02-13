@@ -77,7 +77,7 @@ export const SiteCard = React.memo(function SiteCard({ data, onClick }: SiteCard
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <StatusIndicator status={status} size="sm" pulse={status === 'critical'} />
           <span className="text-[11px] text-kwatch-text-primary truncate">
-            {truncate(data.websiteName, 12)}
+            {truncate(data.organizationName ? `${data.organizationName} ${data.websiteName}` : data.websiteName, 12)}
           </span>
         </div>
         <span

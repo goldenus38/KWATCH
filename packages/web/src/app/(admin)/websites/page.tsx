@@ -313,16 +313,16 @@ export default function WebsitesPage() {
           <thead className="border-b border-kwatch-bg-tertiary bg-kwatch-bg-tertiary">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                이름
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                URL
+                카테고리
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
                 기관명
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                카테고리
+                사이트명
+              </th>
+              <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
+                URL
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
                 점검주기(초)
@@ -354,15 +354,15 @@ export default function WebsitesPage() {
                   key={website.id}
                   className="border-b border-kwatch-bg-tertiary hover:bg-kwatch-bg-primary transition-colors"
                 >
-                  <td className="px-6 py-3 text-sm font-medium">{website.name}</td>
-                  <td className="px-6 py-3 text-sm text-kwatch-text-secondary truncate max-w-xs">
-                    {website.url}
+                  <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
+                    {website.category?.name || '-'}
                   </td>
                   <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
                     {website.organizationName || '-'}
                   </td>
-                  <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
-                    {website.category?.name || '-'}
+                  <td className="px-6 py-3 text-sm font-medium">{website.name}</td>
+                  <td className="px-6 py-3 text-sm text-kwatch-text-secondary truncate max-w-xs">
+                    {website.url}
                   </td>
                   <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
                     {website.checkIntervalSeconds}

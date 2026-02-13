@@ -168,7 +168,7 @@ export function DetailPopup({
         {/* 헤더 */}
         <div className="bg-kwatch-bg-tertiary border-b border-kwatch-bg-tertiary px-6 py-4 flex items-center justify-between">
           <h2 className="text-dashboard-lg font-bold text-kwatch-text-primary">
-            {websiteName}
+            {siteStatus?.organizationName ? `${siteStatus.organizationName} ${websiteName}` : websiteName}
           </h2>
           <button
             onClick={onClose}
@@ -236,6 +236,12 @@ export function DetailPopup({
                     <div className="text-dashboard-base text-kwatch-text-primary font-mono break-all">
                       {siteStatus?.url ?? '-'}
                     </div>
+                    {siteStatus?.finalUrl && siteStatus.finalUrl !== siteStatus.url && (
+                      <div className="mt-1 text-dashboard-sm text-kwatch-text-secondary font-mono break-all">
+                        <span className="text-kwatch-text-muted mr-1">↳ 최종 URL:</span>
+                        {siteStatus.finalUrl}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="text-dashboard-sm text-kwatch-text-secondary">

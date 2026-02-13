@@ -84,6 +84,7 @@ model MonitoringResult {
   responseTimeMs Int?     @map("response_time_ms")
   isUp           Boolean  @map("is_up")
   errorMessage   String?  @map("error_message") @db.Text
+  finalUrl       String?  @map("final_url") @db.VarChar(2048)
   checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz
 
   // Relations

@@ -95,13 +95,16 @@ export interface MonitoringResult {
   responseTimeMs: number | null;
   isUp: boolean;
   errorMessage: string | null;
+  finalUrl: string | null;
   checkedAt: string;
 }
 
 export interface MonitoringStatus {
   websiteId: number;
   websiteName: string;
+  organizationName: string | null;
   url: string;
+  finalUrl: string | null;
   statusCode: number | null;
   responseTimeMs: number | null;
   isUp: boolean;
