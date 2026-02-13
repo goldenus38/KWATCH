@@ -168,9 +168,31 @@ export class ScreenshotService {
       const removedCount = await page.evaluate(`(() => {
         let removed = 0;
 
-        // 1단계: "오늘 하루 안 보기", "닫기" 등 팝업 닫기 버튼 클릭 시도
+        // 1단계: CSS 셀렉터로 닫기 버튼 클릭 (텍스트 없는 아이콘 버튼 대응)
+        const closeSelectors = [
+          '.pop-close', '.popup-close', '.pop_close',
+          '.btn-close', '.btn_close', '.btnClose',
+          '.close-btn', '.close_btn', '.closeBtn',
+          '.modal-close', '.modal_close', '.modalClose',
+          '.layer-close', '.layer_close', '.layerClose',
+          '.pop-today-close', '.popup-today-close',
+          '[class*="pop"][class*="close"]',
+          '[class*="layer"][class*="close"]',
+          '[class*="modal"][class*="close"]',
+        ];
+        for (const selector of closeSelectors) {
+          try {
+            const els = document.querySelectorAll(selector);
+            for (const el of els) {
+              el.click(); removed++;
+            }
+          } catch(e) {}
+        }
+
+        // 2단계: 텍스트 패턴으로 팝업 닫기 버튼 클릭
         const closePatterns = [
           '오늘 하루 안 보기',
+          '오늘 하루 보지 않기',
           '오늘하루보지않기',
           '오늘 하루 보지않기',
           '오늘 하루 열지 않기',
@@ -192,7 +214,6 @@ export class ScreenshotService {
           'close',
         ];
 
-        // 텍스트로 버튼/링크 찾기
         const allClickables = document.querySelectorAll('a, button, input[type="button"], input[type="submit"], span, div, label');
         for (const el of allClickables) {
           const text = (el.textContent || '').trim().replace(/\\s+/g, ' ');
@@ -207,7 +228,27 @@ export class ScreenshotService {
           }
         }
 
-        // 2단계: 고정 위치 오버레이 요소 제거
+        // 3단계: jQuery .show 클래스 기반 팝업 숨기기
+        const showPopupSelectors = [
+          '.top-layer-pop.show', '.layer-pop.show', '.popup-layer.show',
+          '.pop-wrap.show', '.popup-wrap.show', '.layer-wrap.show',
+          '.modal-popup.show', '.event-popup.show',
+          '[class*="pop"][class*="layer"].show',
+          '[class*="layer"][class*="pop"].show',
+          '[class*="popup"].show',
+        ];
+        for (const selector of showPopupSelectors) {
+          try {
+            const els = document.querySelectorAll(selector);
+            for (const el of els) {
+              el.classList.remove('show');
+              el.style.display = 'none';
+              removed++;
+            }
+          } catch(e) {}
+        }
+
+        // 4단계: 고정 위치 오버레이 요소 제거
         const allElements = document.querySelectorAll('*');
         for (const el of allElements) {
           const style = window.getComputedStyle(el);
@@ -232,18 +273,24 @@ export class ScreenshotService {
 
             const idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
             const popupKeywords = ['popup','pop-up','pop_up','layer','modal','notice','banner',
-              'overlay','dim','mask','lightbox','alert-box','float-','floating'];
+              'overlay','dim','mask','lightbox','alert-box','float-','floating','tpop'];
             if (popupKeywords.some(kw => idClass.includes(kw))) {
               el.remove(); removed++;
             }
           }
         }
 
-        // 3단계: body overflow 복원 (팝업이 스크롤 잠금한 경우)
+        // 5단계: body 스크롤 잠금 해제 (inline style + CSS 클래스)
         document.body.style.overflow = '';
         document.body.style.overflowY = '';
         document.documentElement.style.overflow = '';
         document.documentElement.style.overflowY = '';
+        const scrollLockClasses = ['fixed','no-scroll','no_scroll','noScroll',
+          'overflow-hidden','overflow_hidden','scroll-lock','scroll_lock','modal-open','popup-open'];
+        for (const cls of scrollLockClasses) {
+          document.body.classList.remove(cls);
+          document.documentElement.classList.remove(cls);
+        }
 
         return removed;
       })()`) as number;
