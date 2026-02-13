@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ComposedChart,
   Area,
@@ -89,10 +90,15 @@ export function DetailPopup({
   siteStatus,
   onClose,
 }: DetailPopupProps) {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState('');
+  const [localStatus, setLocalStatus] = useState<MonitoringStatus | undefined>(siteStatus);
   const [monitoringHistory, setMonitoringHistory] = useState<MonitoringResult[]>([]);
   const [latestDefacement, setLatestDefacement] = useState<DefacementCheckData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
+  const [cacheBuster, setCacheBuster] = useState(0);
 
   useEffect(() => {
     if (!websiteId) return;
@@ -104,9 +110,10 @@ export function DetailPopup({
         api.get<MonitoringResult[]>(`/api/monitoring/${websiteId}?limit=48`),
         api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`),
         api.get<Alert[]>(`/api/alerts?websiteId=${websiteId}&limit=10`),
+        api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`),
       ]);
 
-      const [historyRes, defacementRes, alertsRes] = results;
+      const [historyRes, defacementRes, alertsRes, statusRes] = results;
 
       if (historyRes.status === 'fulfilled' && historyRes.value.success && historyRes.value.data) {
         setMonitoringHistory(historyRes.value.data);
@@ -126,11 +133,108 @@ export function DetailPopup({
         console.error('[DetailPopup] Failed to fetch alerts:', alertsRes.reason);
       }
 
+      if (statusRes.status === 'fulfilled' && statusRes.value.success && statusRes.value.data) {
+        setLocalStatus(statusRes.value.data);
+      }
+
       setIsLoading(false);
     };
 
     fetchDetails();
   }, [websiteId]);
+
+  const handleRefresh = async () => {
+    if (!websiteId || isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshStatus('작업 큐 등록 중...');
+
+    // 현재 스크린샷 URL 기록 (변경 감지용)
+    const prevScreenshotUrl = localStatus?.screenshotUrl || '';
+
+    try {
+      await api.post(`/api/monitoring/${websiteId}/refresh`);
+    } catch (e) {
+      console.error('[DetailPopup] Refresh failed:', e);
+      setIsRefreshing(false);
+      setRefreshStatus('');
+      return;
+    }
+
+    setRefreshStatus('상태 체크 중...');
+    const startTime = Date.now();
+
+    // 폴링: 스크린샷이 갱신될 때까지 3초 간격으로 최대 60초 대기
+    let attempts = 0;
+    const maxAttempts = 20;
+    const pollInterval = 3000;
+    let monitoringDone = false;
+
+    const poll = async () => {
+      attempts++;
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const statusRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
+      const newScreenshotUrl = statusRes.success && statusRes.data ? statusRes.data.screenshotUrl : '';
+
+      // 모니터링 상태 변경 감지
+      if (!monitoringDone && statusRes.success && statusRes.data) {
+        const prevCheckedAt = localStatus?.checkedAt || '';
+        if (statusRes.data.checkedAt && statusRes.data.checkedAt !== prevCheckedAt) {
+          monitoringDone = true;
+          setLocalStatus(statusRes.data);
+          setRefreshStatus(`스크린샷 캡처 대기 중... (${elapsed}초)`);
+        }
+      }
+
+      if (!monitoringDone) {
+        setRefreshStatus(`상태 체크 중... (${elapsed}초)`);
+      } else {
+        setRefreshStatus(`스크린샷 캡처 대기 중... (${elapsed}초)`);
+      }
+
+      if (newScreenshotUrl && newScreenshotUrl !== prevScreenshotUrl) {
+        // 스크린샷이 갱신됨 — 전체 데이터 fetch
+        setRefreshStatus('데이터 갱신 중...');
+        const results = await Promise.allSettled([
+          api.get<MonitoringResult[]>(`/api/monitoring/${websiteId}?limit=48`),
+          api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`),
+          api.get<Alert[]>(`/api/alerts?websiteId=${websiteId}&limit=10`),
+        ]);
+        const [historyRes, defacementRes, alertsRes] = results;
+        if (historyRes.status === 'fulfilled' && historyRes.value.success && historyRes.value.data) {
+          setMonitoringHistory(historyRes.value.data);
+        }
+        if (defacementRes.status === 'fulfilled' && defacementRes.value.success && defacementRes.value.data) {
+          setLatestDefacement(defacementRes.value.data);
+        }
+        if (alertsRes.status === 'fulfilled' && alertsRes.value.success && alertsRes.value.data) {
+          setRecentAlerts(alertsRes.value.data);
+        }
+        if (statusRes.data) {
+          setLocalStatus(statusRes.data);
+        }
+        setCacheBuster(Date.now());
+        setRefreshStatus('');
+        setIsRefreshing(false);
+        return;
+      }
+
+      if (statusRes.success && statusRes.data) {
+        setLocalStatus(statusRes.data);
+      }
+
+      if (attempts < maxAttempts) {
+        setTimeout(poll, pollInterval);
+      } else {
+        // 타임아웃
+        setCacheBuster(Date.now());
+        setRefreshStatus('');
+        setIsRefreshing(false);
+      }
+    };
+
+    // 첫 폴링은 5초 후 시작
+    setTimeout(poll, 5000);
+  };
 
   if (!websiteId) return null;
 
@@ -145,19 +249,20 @@ export function DetailPopup({
       errorMessage: r.errorMessage,
     }));
 
-  // 스크린샷 URL
-  const screenshotUrl = siteStatus?.screenshotUrl
-    ? `${API_BASE_URL}${siteStatus.screenshotUrl}`
+  // 스크린샷 URL (캐시 버스팅 포함)
+  const cb = cacheBuster ? `?t=${cacheBuster}` : '';
+  const screenshotUrl = localStatus?.screenshotUrl
+    ? `${API_BASE_URL}${localStatus.screenshotUrl}${cb}`
     : null;
 
   // 베이스라인 스크린샷 URL
   const baselineScreenshotUrl = latestDefacement?.baseline?.screenshotId
-    ? `${API_BASE_URL}/api/screenshots/image/${latestDefacement.baseline.screenshotId}`
+    ? `${API_BASE_URL}/api/screenshots/image/${latestDefacement.baseline.screenshotId}${cb}`
     : null;
 
   // Diff 이미지 URL
   const diffImageUrl = latestDefacement?.id
-    ? `${API_BASE_URL}/api/defacement/diff/${latestDefacement.id}`
+    ? `${API_BASE_URL}/api/defacement/diff/${latestDefacement.id}${cb}`
     : null;
 
   return (
@@ -170,9 +275,39 @@ export function DetailPopup({
       <div className="bg-kwatch-bg-secondary rounded-lg w-11/12 h-5/6 max-w-6xl overflow-hidden flex flex-col animate-slide-up">
         {/* 헤더 */}
         <div className="bg-kwatch-bg-tertiary border-b border-kwatch-bg-tertiary px-6 py-4 flex items-center justify-between">
-          <h2 className="text-dashboard-lg font-bold text-kwatch-text-primary">
-            {siteStatus?.organizationName ? `${siteStatus.organizationName} ${websiteName}` : websiteName}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-dashboard-lg font-bold text-kwatch-text-primary">
+              {localStatus?.organizationName ? `${localStatus.organizationName} ${websiteName}` : websiteName}
+            </h2>
+            <button
+              onClick={() => { onClose(); router.push(`/websites?search=${encodeURIComponent(websiteName)}`); }}
+              className="text-kwatch-text-muted hover:text-kwatch-accent transition-colors"
+              title="사이트 관리로 이동"
+              aria-label="사이트 관리로 이동"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors ${isRefreshing ? 'animate-spin text-kwatch-accent' : ''}`}
+              title="즉시 새로고침 (상태체크 + 스크린샷 + 위변조)"
+              aria-label="즉시 새로고침"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+              </svg>
+            </button>
+            {refreshStatus && (
+              <span className="text-xs text-kwatch-accent animate-pulse">{refreshStatus}</span>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-2xl text-kwatch-text-secondary hover:text-kwatch-text-primary transition-colors"
@@ -237,27 +372,27 @@ export function DetailPopup({
                       URL
                     </div>
                     <div className="text-dashboard-base text-kwatch-text-primary font-mono break-all">
-                      {siteStatus?.url ? (
+                      {localStatus?.url ? (
                         <a
-                          href={siteStatus.url}
+                          href={localStatus.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-kwatch-accent hover:text-kwatch-accent-hover hover:underline"
                         >
-                          {siteStatus.url}
+                          {localStatus.url}
                         </a>
                       ) : '-'}
                     </div>
-                    {siteStatus?.finalUrl && siteStatus.finalUrl !== siteStatus.url && (
+                    {localStatus?.finalUrl && localStatus.finalUrl !== localStatus.url && (
                       <div className="mt-1 text-dashboard-sm text-kwatch-text-secondary font-mono break-all">
                         <span className="text-kwatch-text-muted mr-1">↳ 최종 URL:</span>
                         <a
-                          href={siteStatus.finalUrl}
+                          href={localStatus.finalUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-kwatch-accent hover:text-kwatch-accent-hover hover:underline"
                         >
-                          {siteStatus.finalUrl}
+                          {localStatus.finalUrl}
                         </a>
                       </div>
                     )}
@@ -267,13 +402,13 @@ export function DetailPopup({
                       HTTP 상태
                     </div>
                     <div className="text-dashboard-base font-semibold">
-                      {siteStatus?.isUp ? (
+                      {localStatus?.isUp ? (
                         <span className="text-kwatch-status-normal">
-                          정상 {siteStatus?.statusCode ? `(${siteStatus.statusCode})` : ''}
+                          정상 {localStatus?.statusCode ? `(${localStatus.statusCode})` : ''}
                         </span>
                       ) : (
                         <span className="text-kwatch-status-critical">
-                          {siteStatus?.errorMessage ?? '장애'} {siteStatus?.statusCode ? `(${siteStatus.statusCode})` : ''}
+                          {localStatus?.errorMessage ?? '장애'} {localStatus?.statusCode ? `(${localStatus.statusCode})` : ''}
                         </span>
                       )}
                     </div>
@@ -283,18 +418,18 @@ export function DetailPopup({
                       위변조 상태
                     </div>
                     <div className="text-dashboard-base font-semibold">
-                      {siteStatus?.defacementStatus ? (
-                        siteStatus.defacementStatus.isDefaced ? (
+                      {localStatus?.defacementStatus ? (
+                        localStatus.defacementStatus.isDefaced ? (
                           <span className="text-kwatch-status-critical">
-                            위변조 감지 (유사도: {siteStatus.defacementStatus.htmlSimilarityScore != null || siteStatus.defacementStatus.similarityScore != null ? Number(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore).toFixed(1) : '-'}%)
-                            {siteStatus.defacementStatus.detectionMethod === 'hybrid' && (
+                            위변조 감지 (유사도: {localStatus.defacementStatus.htmlSimilarityScore != null || localStatus.defacementStatus.similarityScore != null ? Number(localStatus.defacementStatus.htmlSimilarityScore ?? localStatus.defacementStatus.similarityScore).toFixed(1) : '-'}%)
+                            {localStatus.defacementStatus.detectionMethod === 'hybrid' && (
                               <span className="ml-1 px-1.5 py-0.5 bg-kwatch-accent/20 text-kwatch-accent rounded text-xs font-normal">하이브리드</span>
                             )}
                           </span>
                         ) : (
                           <span className="text-kwatch-status-normal">
-                            정상 (유사도: {siteStatus.defacementStatus.htmlSimilarityScore != null || siteStatus.defacementStatus.similarityScore != null ? Number(siteStatus.defacementStatus.htmlSimilarityScore ?? siteStatus.defacementStatus.similarityScore).toFixed(1) : '-'}%)
-                            {siteStatus.defacementStatus.detectionMethod === 'hybrid' && (
+                            정상 (유사도: {localStatus.defacementStatus.htmlSimilarityScore != null || localStatus.defacementStatus.similarityScore != null ? Number(localStatus.defacementStatus.htmlSimilarityScore ?? localStatus.defacementStatus.similarityScore).toFixed(1) : '-'}%)
+                            {localStatus.defacementStatus.detectionMethod === 'hybrid' && (
                               <span className="ml-1 px-1.5 py-0.5 bg-kwatch-accent/20 text-kwatch-accent rounded text-xs font-normal">하이브리드</span>
                             )}
                           </span>
@@ -309,7 +444,7 @@ export function DetailPopup({
                       마지막 점검
                     </div>
                     <div className="text-dashboard-base text-kwatch-text-primary font-mono">
-                      {siteStatus?.checkedAt ? formatDateTime(siteStatus.checkedAt) : '-'}
+                      {localStatus?.checkedAt ? formatDateTime(localStatus.checkedAt) : '-'}
                     </div>
                   </div>
                   <div>
@@ -317,7 +452,7 @@ export function DetailPopup({
                       응답 시간
                     </div>
                     <div className="text-dashboard-base text-kwatch-text-primary font-mono">
-                      {formatResponseTime(siteStatus?.responseTimeMs ?? null)}
+                      {formatResponseTime(localStatus?.responseTimeMs ?? null)}
                     </div>
                   </div>
                 </div>

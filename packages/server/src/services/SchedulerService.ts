@@ -132,6 +132,36 @@ export class SchedulerService {
   }
 
   /**
+   * 단일 모니터링 체크 작업을 큐에 즉시 추가합니다 (수동 새로고침용)
+   */
+  async enqueueMonitoringCheck(website: any): Promise<void> {
+    try {
+      if (!this.monitoringQueue) {
+        throw new Error('Monitoring queue not initialized');
+      }
+
+      await this.monitoringQueue.add(
+        `monitoring:manual:${website.id}`,
+        {
+          websiteId: website.id,
+          url: website.url,
+          timeoutSeconds: website.timeoutSeconds,
+        },
+        {
+          priority: 1,
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
+
+      logger.info(`Manual monitoring check enqueued for website ${website.id}`);
+    } catch (error) {
+      logger.error(`enqueueMonitoringCheck failed for website ${website.id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 모든 활성 웹사이트의 모니터링을 스케줄합니다
    * 첫 실행을 checkInterval 내에 균등 분산 (thundering herd 방지)
    */

@@ -75,9 +75,16 @@ export class DefacementService {
         websiteId,
       );
 
+      // 사이트별 설정 조회 (defacementMode, ignoreSelectors)
+      const website = await this.prisma.website.findUnique({
+        where: { id: websiteId },
+        select: { url: true, ignoreSelectors: true, defacementMode: true },
+      });
+      const forcePixelOnly = website?.defacementMode === 'pixel_only';
+
       // HTML 분석 (베이스라인에 HTML 데이터가 있고, htmlContent가 있을 때만)
       const hasHtmlBaseline = baseline.structuralHash && baseline.domainWhitelist;
-      const canDoHybrid = hasHtmlBaseline && htmlContent && config.monitoring.htmlAnalysisEnabled;
+      const canDoHybrid = hasHtmlBaseline && htmlContent && config.monitoring.htmlAnalysisEnabled && !forcePixelOnly;
 
       let structuralScore = 100;
       let criticalElementsScore = 100;
@@ -89,11 +96,6 @@ export class DefacementService {
 
       if (canDoHybrid) {
         try {
-          // 사이트별 ignoreSelectors 조회
-          const website = await this.prisma.website.findUnique({
-            where: { id: websiteId },
-            select: { url: true, ignoreSelectors: true },
-          });
           const ignoreSelectors = (website?.ignoreSelectors as string[] | null) || [];
 
           const htmlResult = htmlAnalysisService.compareWithBaseline(

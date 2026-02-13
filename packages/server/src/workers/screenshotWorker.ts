@@ -9,6 +9,13 @@ import { htmlAnalysisService } from '../services/HtmlAnalysisService';
 import { ScreenshotJobData } from '../types';
 
 /**
+ * 베이스라인 대비 현재 스크린샷 파일 크기 비율 하한
+ * 비율이 이보다 작으면 불량 스크린샷으로 판단 (SPA 미렌더링, 로그인 월 등)
+ * 절대 크기 검증은 ScreenshotService에서 처리 (30KB 미만 → 저장 안 함)
+ */
+const MIN_BASELINE_SIZE_RATIO = 0.25; // 25%
+
+/**
  * 스크린샷 캡처 큐 워커
  * Playwright를 이용하여 웹사이트 스크린샷을 캡처하고 위변조 체크 작업을 트리거합니다.
  */
@@ -58,29 +65,49 @@ export async function initScreenshotWorker(): Promise<Worker<ScreenshotJobData>>
         });
 
         if (baseline) {
-          // 위변조 체크 작업 큐에 추가 (Redis rate limit으로 주기 제한)
-          try {
-            const defacementInterval = config.monitoring.defacementInterval;
-            const rateLimitKey = `defacement:ratelimit:${job.data.websiteId}`;
-            const isLimited = await redis.get(rateLimitKey);
-
-            if (!isLimited) {
-              await redis.set(rateLimitKey, '1', 'EX', defacementInterval);
-              await schedulerService.enqueueDefacementCheck(
-                job.data.websiteId,
-                screenshotId,
-                baseline.id,
-                screenshot.htmlContent,
+          // 베이스라인 대비 크기 비율 검증: SPA 미렌더링/로그인 월 등 감지
+          // (절대 크기 검증은 ScreenshotService에서 처리 — 30KB 미만은 저장 자체를 안 함)
+          let skipDefacement = false;
+          const baselineScreenshot = await prisma.screenshot.findUnique({
+            where: { id: baseline.screenshotId },
+            select: { fileSize: true },
+          });
+          if (baselineScreenshot?.fileSize && baselineScreenshot.fileSize > 0) {
+            const sizeRatio = screenshot.fileSize / baselineScreenshot.fileSize;
+            if (sizeRatio < MIN_BASELINE_SIZE_RATIO) {
+              logger.warn(
+                `[ScreenshotWorker] Screenshot size ratio too low for website ${job.data.websiteId}: ` +
+                  `${screenshot.fileSize}/${baselineScreenshot.fileSize} = ${(sizeRatio * 100).toFixed(1)}% < ${MIN_BASELINE_SIZE_RATIO * 100}%, skipping defacement check`,
               );
-              logger.debug(
-                `[ScreenshotWorker] Defacement check job enqueued for website ${job.data.websiteId}`,
+              skipDefacement = true;
+            }
+          }
+
+          if (!skipDefacement) {
+            // 위변조 체크 작업 큐에 추가 (Redis rate limit으로 주기 제한)
+            try {
+              const defacementInterval = config.monitoring.defacementInterval;
+              const rateLimitKey = `defacement:ratelimit:${job.data.websiteId}`;
+              const isLimited = await redis.get(rateLimitKey);
+
+              if (!isLimited) {
+                await redis.set(rateLimitKey, '1', 'EX', defacementInterval);
+                await schedulerService.enqueueDefacementCheck(
+                  job.data.websiteId,
+                  screenshotId,
+                  baseline.id,
+                  screenshot.htmlContent,
+                );
+                logger.debug(
+                  `[ScreenshotWorker] Defacement check job enqueued for website ${job.data.websiteId}`,
+                );
+              }
+            } catch (error) {
+              logger.warn(
+                `[ScreenshotWorker] Failed to enqueue defacement check for website ${job.data.websiteId}:`,
+                error,
               );
             }
-          } catch (error) {
-            logger.warn(
-              `[ScreenshotWorker] Failed to enqueue defacement check for website ${job.data.websiteId}:`,
-              error,
-            );
           }
         } else {
           // 베이스라인이 없으면 현재 스크린샷을 베이스라인으로 자동 등록

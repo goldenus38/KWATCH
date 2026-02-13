@@ -37,6 +37,28 @@ const isValidUrl = (url: string): boolean => {
 };
 
 /**
+ * SNS/동적 사이트 호스트네임 패턴 — 자동으로 pixel_only 모드 적용
+ */
+const PIXEL_ONLY_HOSTNAMES = [
+  'facebook.com',
+  'instagram.com',
+  'youtube.com',
+  'x.com',
+  'twitter.com',
+  'blog.naver.com',
+  'tiktok.com',
+];
+
+const shouldForcePixelOnly = (url: string): boolean => {
+  try {
+    const hostname = new URL(url).hostname;
+    return PIXEL_ONLY_HOSTNAMES.some((pattern) => hostname === pattern || hostname.endsWith('.' + pattern));
+  } catch {
+    return false;
+  }
+};
+
+/**
  * GET /api/websites/export
  * 전체 웹사이트 목록 내보내기 (admin only, pagination 없음)
  */
@@ -142,6 +164,7 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
       checkIntervalSeconds,
       timeoutSeconds,
       ignoreSelectors,
+      defacementMode,
     } = req.body as WebsiteCreateInput;
     const prisma = getDbClient();
 
@@ -202,6 +225,14 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
       }
     }
 
+    // defacementMode 검증 + SNS 자동 감지
+    const validDefacementModes = ['auto', 'pixel_only'];
+    if (defacementMode !== undefined && !validDefacementModes.includes(defacementMode)) {
+      sendError(res, 'INVALID_INPUT', "defacementMode는 'auto' 또는 'pixel_only'이어야 합니다.", 400);
+      return;
+    }
+    const resolvedDefacementMode = defacementMode || (shouldForcePixelOnly(url) ? 'pixel_only' : 'auto');
+
     // 웹사이트 등록
     const newWebsite = await prisma.website.create({
       data: {
@@ -214,6 +245,7 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
         timeoutSeconds: timeoutSeconds || 60,
         isActive: true,
         ...(ignoreSelectors && { ignoreSelectors }),
+        defacementMode: resolvedDefacementMode,
       },
       include: {
         category: true,
@@ -346,6 +378,13 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
       }
     }
 
+    // defacementMode 검증
+    const validDefacementModes = ['auto', 'pixel_only'];
+    if (updates.defacementMode !== undefined && !validDefacementModes.includes(updates.defacementMode)) {
+      sendError(res, 'INVALID_INPUT', "defacementMode는 'auto' 또는 'pixel_only'이어야 합니다.", 400);
+      return;
+    }
+
     // 웹사이트 수정
     const updatedWebsite = await prisma.website.update({
       where: { id: websiteId },
@@ -359,6 +398,7 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
         ...(updates.timeoutSeconds !== undefined && { timeoutSeconds: updates.timeoutSeconds }),
         ...(updates.isActive !== undefined && { isActive: updates.isActive }),
         ...(updates.ignoreSelectors !== undefined && { ignoreSelectors: updates.ignoreSelectors }),
+        ...(updates.defacementMode !== undefined && { defacementMode: updates.defacementMode }),
       },
       include: {
         category: true,
@@ -567,6 +607,7 @@ router.post('/bulk', authenticate, authorize('admin'), async (req, res) => {
                 checkIntervalSeconds: website.checkIntervalSeconds || 60,
                 timeoutSeconds: website.timeoutSeconds || 60,
                 isActive: true,
+                defacementMode: shouldForcePixelOnly(website.url) ? 'pixel_only' : 'auto',
               },
             }),
           ),

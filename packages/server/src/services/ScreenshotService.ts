@@ -8,6 +8,22 @@ import { logger } from '../utils/logger';
 import { ScreenshotResult } from '../types';
 
 /**
+ * 스크린샷 품질 판정 최소 파일 크기 (bytes)
+ * 1920x1080 뷰포트에서 빈 흰 페이지 ~8-15KB, 정상 페이지 50KB+
+ */
+const MIN_VALID_SCREENSHOT_BYTES = 30_000;
+
+/**
+ * 재시도 전략 (순서대로 시도)
+ * 1차: 추가 대기 후 재촬영 (SPA 렌더링 미완료 대응)
+ * 2차: networkidle 모드로 페이지 리로드 (느린 SPA 대응)
+ */
+const RETRY_STRATEGIES = [
+  { label: 'extra-wait', extraWaitMs: 3000 },
+  { label: 'networkidle-reload', waitUntil: 'networkidle' as const, extraWaitMs: 2000 },
+] as const;
+
+/**
  * Playwright를 이용한 웹사이트 스크린샷 캡처 서비스
  * 1920x1080 해상도로 메인페이지 스크린샷을 캡처하고 썸네일을 생성합니다.
  */
@@ -90,27 +106,49 @@ export class ScreenshotService {
       // window.open 팝업 차단 (네비게이션 전에 주입)
       await page.addInitScript('window.open = () => null;');
 
-      // TODO: URL로 네비게이션
-      // TODO: 페이지 로딩 실패 시 에러 처리
-      // load: 이미지/CSS/JS 리소스 로드까지 대기하되 네트워크 유휴 대기 없음
-      // networkidle보다 빠르고, domcontentloaded보다 SPA 렌더링 안정적
+      // 1차 시도: load 이벤트 대기 + 1초 렌더링 대기
       await page.goto(url, { waitUntil: 'load', timeout: config.screenshot.timeout });
-
-      // DOM 로드 후 JS 렌더링 완료 대기
       await page.waitForTimeout(1000);
-
-      // 레이어 팝업 제거 (한국 공공기관 사이트 대응)
       await this.dismissPopups(page, websiteId);
 
-      // TODO: 스크린샷 파일명 생성 (형식: {websiteId}_{timestamp}.png)
+      let buffer = await page.screenshot({ fullPage: false });
+
+      // 품질 검사 → 불량이면 재시도
+      for (const strategy of RETRY_STRATEGIES) {
+        if (buffer.length >= MIN_VALID_SCREENSHOT_BYTES) break;
+
+        logger.warn(
+          `[ScreenshotRetry] Website ${websiteId}: ${buffer.length} bytes < ${MIN_VALID_SCREENSHOT_BYTES} bytes, ` +
+            `retrying with strategy "${strategy.label}"`,
+        );
+
+        try {
+          if ('waitUntil' in strategy) {
+            // 페이지 리로드 (다른 waitUntil 전략)
+            await page.reload({ waitUntil: strategy.waitUntil, timeout: config.screenshot.timeout });
+          }
+
+          await page.waitForTimeout(strategy.extraWaitMs);
+          await this.dismissPopups(page, websiteId);
+          const retryBuffer = await page.screenshot({ fullPage: false });
+
+          // 재시도 결과가 더 좋으면 채택
+          if (retryBuffer.length > buffer.length) {
+            buffer = retryBuffer;
+            logger.info(
+              `[ScreenshotRetry] Website ${websiteId}: strategy "${strategy.label}" improved to ${retryBuffer.length} bytes`,
+            );
+          }
+        } catch (retryError) {
+          logger.warn(`[ScreenshotRetry] Website ${websiteId}: strategy "${strategy.label}" failed:`, retryError);
+        }
+      }
+
       const timestamp = Date.now();
       const filename = `${websiteId}_${timestamp}.png`;
       const filepath = path.join(this.currentDir, filename);
 
-      // TODO: 스크린샷 캡처 (fullPage: false, 뷰포트만 캡처)
-      const buffer = await page.screenshot({ fullPage: false });
-
-      // HTML 콘텐츠 캡처 (추가 비용 0 — 이미 열린 페이지의 DOM 읽기)
+      // HTML 콘텐츠 캡처
       let htmlContent: string | undefined;
       try {
         htmlContent = await page.content();
@@ -118,29 +156,36 @@ export class ScreenshotService {
         logger.warn(`HTML capture failed for website ${websiteId}`);
       }
 
-      // TODO: 파일 저장
+      // 최종 품질 검사: 재시도 후에도 불량이면 저장하지 않고 에러
+      if (buffer.length < MIN_VALID_SCREENSHOT_BYTES) {
+        logger.warn(
+          `[ScreenshotQuality] Website ${websiteId}: final screenshot ${buffer.length} bytes ` +
+            `< ${MIN_VALID_SCREENSHOT_BYTES} bytes after all retries, discarding`,
+        );
+        throw new Error(
+          `Screenshot quality too low for website ${websiteId}: ${buffer.length} bytes (blank page or SPA not rendered)`,
+        );
+      }
+
       await fs.writeFile(filepath, buffer);
 
-      // TODO: 파일 크기 조회
-      const stats = await fs.stat(filepath);
-
-      // TODO: 썸네일 생성 (200x112, 16:9 비율)
+      // 썸네일 생성 (200x112, 16:9 비율)
       await this.generateThumbnail(filepath, websiteId, timestamp);
 
-      // TODO: 데이터베이스에 Screenshot 레코드 저장
+      // 데이터베이스에 Screenshot 레코드 저장
       const dbRecord = await this.prisma.screenshot.create({
         data: {
           websiteId,
           filePath: filepath,
-          fileSize: stats.size,
+          fileSize: buffer.length,
         },
       });
 
-      logger.info(`Screenshot captured for website ${websiteId}: ${filepath}`);
+      logger.info(`Screenshot captured for website ${websiteId}: ${filepath} (${buffer.length} bytes)`);
 
       return {
         filePath: filepath,
-        fileSize: stats.size,
+        fileSize: buffer.length,
         htmlContent,
       };
     } catch (error) {
@@ -216,6 +261,28 @@ export class ScreenshotService {
           'CLOSE',
           'Close',
           'close',
+          // SNS/글로벌 사이트 로그인 팝업 패턴
+          'Not now',
+          'Not Now',
+          'No thanks',
+          'No Thanks',
+          'Maybe later',
+          'Maybe Later',
+          'Dismiss',
+          'dismiss',
+          'Skip',
+          'Accept All',
+          'Accept all',
+          'Accept Cookies',
+          'Accept cookies',
+          'Allow All',
+          'Allow all',
+          'Decline',
+          'Reject All',
+          'Reject all',
+          'Got it',
+          'I agree',
+          'Continue browsing',
         ];
 
         const allClickables = document.querySelectorAll('a, button, input[type="button"], input[type="submit"], span, div, label');
@@ -252,39 +319,83 @@ export class ScreenshotService {
           } catch(e) {}
         }
 
-        // 4단계: 고정 위치 오버레이 요소 제거
-        const allElements = document.querySelectorAll('*');
-        for (const el of allElements) {
-          const style = window.getComputedStyle(el);
-          const position = style.position;
-          const zIndex = parseInt(style.zIndex) || 0;
-          const rect = el.getBoundingClientRect();
-
-          const isOverlay = (position === 'fixed' || position === 'absolute') && zIndex >= 900;
-          const coversScreen = rect.width > window.innerWidth * 0.3 && rect.height > window.innerHeight * 0.3;
-          const isDim = (style.backgroundColor.includes('rgba') && parseFloat(style.opacity || '1') < 1) ||
-            (style.backgroundColor.includes('rgb(0, 0, 0)') && parseFloat(style.opacity || '1') < 0.8);
-
-          // 딤(dim) 배경 레이어 제거
-          if (isOverlay && coversScreen && isDim) {
-            el.remove(); removed++; continue;
-          }
-
-          // 팝업 레이어 제거
-          if (isOverlay && coversScreen) {
-            const tag = el.tagName.toLowerCase();
-            if (['body','html','header','nav','main','footer'].includes(tag)) continue;
-
-            const idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
-            const popupKeywords = ['popup','pop-up','pop_up','layer','modal','notice','banner',
-              'overlay','dim','mask','lightbox','alert-box','float-','floating','tpop'];
-            if (popupKeywords.some(kw => idClass.includes(kw))) {
-              el.remove(); removed++;
+        // 4단계: SNS 사이트 로그인 월/모달 제거 (Instagram, Facebook 등)
+        const snsModalSelectors = [
+          // Instagram 로그인 모달
+          '[role="dialog"]',
+          '[role="presentation"]',
+          // Facebook 로그인 레이어
+          '[data-testid="cookie-policy-manage-dialog"]',
+          '[data-testid="cookie-policy-dialog"]',
+          '#login_popup',
+          // YouTube 쿠키/로그인 팝업
+          'ytd-consent-bump-v2-lightbox',
+          'tp-yt-paper-dialog',
+          // 공통 쿠키 동의 배너
+          '#cookie-banner', '#cookie-consent', '#cookieConsent',
+          '.cookie-banner', '.cookie-consent', '.cookieConsent',
+          '#onetrust-banner-sdk', '#onetrust-consent-sdk',
+          '.cc-banner', '.cc-window',
+          '#gdpr-banner', '.gdpr-banner',
+        ];
+        for (const selector of snsModalSelectors) {
+          try {
+            const els = document.querySelectorAll(selector);
+            for (const el of els) {
+              try {
+                if (!el.parentNode) continue;
+                const style = window.getComputedStyle(el);
+                if (!style) continue;
+                const zIndex = parseInt(style.zIndex) || 0;
+                const tag = el.tagName.toLowerCase();
+                // dialog/modal 역할의 오버레이만 제거 (본문 컨텐츠 제외)
+                if (zIndex >= 1 || style.position === 'fixed' || style.position === 'absolute') {
+                  if (!['body','html','header','nav','main','footer','section','article'].includes(tag)) {
+                    el.remove(); removed++;
+                  }
+                }
+              } catch(e2) {}
             }
-          }
+          } catch(e) {}
         }
 
-        // 5단계: body 스크롤 잠금 해제 (inline style + CSS 클래스)
+        // 6단계: 고정 위치 오버레이 요소 제거
+        const allElements = document.querySelectorAll('*');
+        for (const el of allElements) {
+          try {
+            if (!el.parentNode) continue;
+            const style = window.getComputedStyle(el);
+            if (!style) continue;
+            const position = style.position;
+            const zIndex = parseInt(style.zIndex) || 0;
+            const rect = el.getBoundingClientRect();
+
+            const isOverlay = (position === 'fixed' || position === 'absolute') && zIndex >= 900;
+            const coversScreen = rect.width > window.innerWidth * 0.3 && rect.height > window.innerHeight * 0.3;
+            const isDim = (style.backgroundColor.includes('rgba') && parseFloat(style.opacity || '1') < 1) ||
+              (style.backgroundColor.includes('rgb(0, 0, 0)') && parseFloat(style.opacity || '1') < 0.8);
+
+            // 딤(dim) 배경 레이어 제거
+            if (isOverlay && coversScreen && isDim) {
+              el.remove(); removed++; continue;
+            }
+
+            // 팝업 레이어 제거
+            if (isOverlay && coversScreen) {
+              const tag = el.tagName.toLowerCase();
+              if (['body','html','header','nav','main','footer'].includes(tag)) continue;
+
+              const idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
+              const popupKeywords = ['popup','pop-up','pop_up','layer','modal','notice','banner',
+                'overlay','dim','mask','lightbox','alert-box','float-','floating','tpop'];
+              if (popupKeywords.some(kw => idClass.includes(kw))) {
+                el.remove(); removed++;
+              }
+            }
+          } catch(e) {}
+        }
+
+        // 7단계: body 스크롤 잠금 해제 (inline style + CSS 클래스)
         document.body.style.overflow = '';
         document.body.style.overflowY = '';
         document.documentElement.style.overflow = '';

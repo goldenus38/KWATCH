@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { Website, Category, PaginationMeta } from '@/types';
 import * as XLSX from 'xlsx';
@@ -16,6 +17,7 @@ interface WebsiteFormData {
   description: string;
   checkIntervalSeconds: number;
   timeoutSeconds: number;
+  defacementMode: string;
 }
 
 interface BulkRow {
@@ -34,12 +36,13 @@ interface BulkResult {
 }
 
 export default function WebsitesPage() {
+  const searchParams = useSearchParams();
   const [websites, setWebsites] = useState<Website[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [pagination, setPagination] = useState<PaginationMeta>({
     total: 0,
@@ -58,6 +61,7 @@ export default function WebsitesPage() {
     description: '',
     checkIntervalSeconds: 300,
     timeoutSeconds: 60,
+    defacementMode: 'auto',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -223,6 +227,7 @@ export default function WebsitesPage() {
         description: formData.description || null,
         checkIntervalSeconds: formData.checkIntervalSeconds,
         timeoutSeconds: formData.timeoutSeconds,
+        defacementMode: formData.defacementMode,
       };
 
       const response = await api.post<Website>('/api/websites', payload);
@@ -268,6 +273,7 @@ export default function WebsitesPage() {
         description: formData.description || null,
         checkIntervalSeconds: formData.checkIntervalSeconds,
         timeoutSeconds: formData.timeoutSeconds,
+        defacementMode: formData.defacementMode,
       };
 
       const response = await api.put<Website>(
@@ -329,6 +335,7 @@ export default function WebsitesPage() {
       description: '',
       checkIntervalSeconds: 300,
       timeoutSeconds: 60,
+      defacementMode: 'auto',
     });
     setEditingWebsite(null);
   };
@@ -348,6 +355,7 @@ export default function WebsitesPage() {
       description: website.description || '',
       checkIntervalSeconds: website.checkIntervalSeconds,
       timeoutSeconds: website.timeoutSeconds,
+      defacementMode: website.defacementMode || 'auto',
     });
     setShowModal(true);
   };
@@ -875,6 +883,26 @@ export default function WebsitesPage() {
                     min="1"
                     required
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
+                    위변조 탐지 모드
+                  </label>
+                  <select
+                    value={formData.defacementMode}
+                    onChange={(e) =>
+                      setFormData({ ...formData, defacementMode: e.target.value })
+                    }
+                    disabled={isSubmitting}
+                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                  >
+                    <option value="auto">자동 (하이브리드)</option>
+                    <option value="pixel_only">픽셀 전용</option>
+                  </select>
+                  <p className="mt-1 text-xs text-kwatch-text-muted">
+                    SNS/SPA 사이트는 &apos;픽셀 전용&apos; 권장
+                  </p>
                 </div>
               </div>
 

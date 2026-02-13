@@ -62,6 +62,7 @@ export interface WebsiteCreateInput {
   checkIntervalSeconds?: number;
   timeoutSeconds?: number;
   ignoreSelectors?: string[];
+  defacementMode?: string;
 }
 
 export interface WebsiteUpdateInput {
@@ -74,6 +75,7 @@ export interface WebsiteUpdateInput {
   timeoutSeconds?: number;
   isActive?: boolean;
   ignoreSelectors?: string[];
+  defacementMode?: string;
 }
 
 export interface WebsiteFilter {

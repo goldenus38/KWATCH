@@ -60,6 +60,7 @@ model Website {
   timeoutSeconds       Int      @default(30) @map("timeout_seconds")
   isActive             Boolean  @default(true) @map("is_active")
   ignoreSelectors      Json?    @map("ignore_selectors")
+  defacementMode       String   @default("auto") @map("defacement_mode") @db.VarChar(20)
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 

@@ -188,6 +188,7 @@ CREATE TABLE websites (
     check_interval_seconds  INTEGER DEFAULT 300 CHECK (check_interval_seconds > 0),
     timeout_seconds         INTEGER DEFAULT 30 CHECK (timeout_seconds > 0),
     is_active               BOOLEAN DEFAULT true,
+    defacement_mode         VARCHAR(20) DEFAULT 'auto',
     created_at              TIMESTAMPTZ DEFAULT NOW(),
     updated_at              TIMESTAMPTZ DEFAULT NOW()
 );
@@ -706,6 +707,7 @@ volumes:
 | Phase 5 | **완료** | 알림(Email/Slack/Telegram), Vitest 통합 테스트(28개), Docker 배포 |
 | Phase 6 | **완료** | 하이브리드 위변조 탐지 (HTML 구조 + 도메인 감사 + 픽셀 비교 3계층), 팝업 자동 제거 |
 | Phase 7 | **완료** | 위변조 탐지 분석 UI 강화 (하이브리드 데이터 대시보드 노출, 설정 페이지) |
+| Phase 8 | **완료** | SNS pixel_only 모드, 스크린샷 품질 관리, 대시보드 UX 개선 |
 
 ### 주요 구현 세부사항
 
@@ -732,6 +734,10 @@ volumes:
   - 페이지 구조 변경 → CRITICAL, 2회 연속 시 알림
   - 픽셀만 변경 → WARNING, 3회 연속 시 알림
 - **사이트별 동적 영역 제외**: `ignoreSelectors` (CSS 셀렉터 배열)로 사이트별 동적 영역 설정 가능
+- **사이트별 위변조 탐지 모드**: `defacementMode` 필드로 사이트별 탐지 모드 설정
+  - `auto` (기본): 기존 하이브리드 탐지 동작 (베이스라인에 HTML 데이터 있으면 hybrid, 없으면 pixel_only)
+  - `pixel_only`: HTML 구조/도메인 분석 스킵, 픽셀 비교만 수행
+  - SNS 사이트(Facebook, Instagram, YouTube, X/Twitter)는 CDN 도메인 변동/SPA 구조로 인한 오탐 방지를 위해 `pixel_only` 적용
 - **성능 최적화** (1000개 사이트 대응):
   - 워커 concurrency 환경변수화 (`MONITORING_CONCURRENCY`, `SCREENSHOT_CONCURRENCY`, `DEFACEMENT_CONCURRENCY`)
   - Staggered scheduling: 서버 시작 시 모든 작업의 첫 실행을 `STAGGER_WINDOW_SECONDS`(기본 60초) 내 균등 분산 (thundering herd 방지, 전체 사이클 5분 이내 달성)
@@ -758,6 +764,36 @@ volumes:
     - 하이브리드 점수 가중치 시각화 바
   - MonitoringStatus API 응답에 `htmlSimilarityScore`, `detectionMethod` 필드 추가
   - `GET /api/settings/defacement` 엔드포인트 추가 (임계값, 가중치, HTML 분석 활성화 상태)
+- **사이트별 위변조 탐지 모드 (Phase 8)**:
+  - `defacementMode` 필드 추가 (Prisma schema + API + 프론트엔드)
+  - 값: `auto` (기본, 하이브리드) | `pixel_only` (HTML 분석 스킵)
+  - SNS 사이트 URL 자동 감지: `shouldForcePixelOnly()` — facebook, instagram, youtube, x.com, twitter, blog.naver.com, tiktok
+  - 웹사이트 등록(POST)/수정(PUT)/일괄등록(POST bulk) 모두 지원
+  - DefacementService에서 `forcePixelOnly` 조건 반영, 중복 DB 쿼리 제거
+  - 관리 UI: 웹사이트 관리 폼에 "위변조 탐지 모드" 드롭다운 추가
+- **스크린샷 품질 관리 (Phase 8)**:
+  - 최소 파일 크기 검증: 30KB 미만 → 불량 스크린샷으로 판단, 저장하지 않음
+  - 베이스라인 대비 크기 비율 검증: 25% 미만 → 위변조 체크 스킵 (SPA 미렌더링/로그인 월 감지)
+  - 재시도 전략: extra-wait (3초 추가 대기) → networkidle-reload (페이지 리로드)
+  - 모든 재시도 실패 시 스크린샷 미저장 (에러 throw)
+  - 영어 팝업 패턴 추가: "Not now", "Accept Cookies", "Dismiss", "Skip" 등
+  - SNS 모달 셀렉터 추가: `[role="dialog"]`, `[role="presentation"]`, 쿠키 배너, YouTube 동의
+  - dismissPopups null safety: `if (!el.parentNode) continue;` + per-element try-catch
+- **대시보드 UX 개선 (Phase 8)**:
+  - DetailPopup 헤더에 설정 아이콘(톱니바퀴) — 클릭 시 `/websites?search=사이트명`으로 이동, 자동 검색
+  - DetailPopup 헤더에 새로고침 아이콘 — 클릭 시 즉시 모니터링+스크린샷 큐 등록
+  - 새로고침 폴링 방식: 스크린샷 URL 변경 감지까지 3초 간격 폴링 (최대 60초)
+  - 새로고침 진행 상태 표시: "상태 체크 중... (5초)" → "스크린샷 캡처 대기 중... (15초)" → "데이터 갱신 중..."
+  - DetailPopup 열 때마다 `GET /api/monitoring/:websiteId/latest`로 최신 URL/상태 fetch (관리 페이지에서 URL 변경 시 즉시 반영)
+  - 이미지 캐시 버스팅: 새로고침 후 `?t={timestamp}` 추가
+  - `POST /api/monitoring/:websiteId/refresh` 엔드포인트 추가 (모니터링+스크린샷 즉시 큐잉)
+  - `SchedulerService.enqueueMonitoringCheck()` 메서드 추가
+  - 웹사이트 관리 페이지: `useSearchParams`로 URL의 `search` 파라미터 자동 검색
+- **대시보드 실시간 복원 (Phase 8)**:
+  - 모듈 레벨 캐시 (`cachedSummary`, `cachedStatuses`, `cachedAlerts`) 도입
+  - 설정→대시보드 이동 시 캐시된 데이터로 즉시 표시 (로딩 스켈레톤 없음)
+  - WebSocket 재연결 시 자동 데이터 refetch (서버 재시작 대응)
+  - WebSocket 이벤트에서도 캐시 동기화
 
 ### 하이브리드 위변조 탐지 환경변수
 

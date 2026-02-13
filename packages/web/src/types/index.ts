@@ -80,6 +80,7 @@ export interface Website {
   checkIntervalSeconds: number;
   timeoutSeconds: number;
   isActive: boolean;
+  defacementMode: string;
   createdAt: string;
   updatedAt: string;
 }
