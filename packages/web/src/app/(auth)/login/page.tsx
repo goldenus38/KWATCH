@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { KwatchLogo } from '@/components/common/KwatchLogo';
 import type { LoginCredentials, User } from '@/types';
 
 export default function LoginPage() {
@@ -56,13 +57,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="bg-kwatch-bg-secondary rounded-lg shadow-lg p-8 border border-kwatch-bg-tertiary">
           {/* 로고 / 제목 */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-kwatch-text-primary mb-2">
-              KWATCH
-            </h1>
-            <p className="text-kwatch-text-secondary text-sm">
-              웹사이트 관제 시스템
-            </p>
+          <div className="flex justify-center mb-8">
+            <KwatchLogo size="lg" />
           </div>
 
           {/* 에러 메시지 */}

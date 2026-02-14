@@ -555,6 +555,9 @@ DASHBOARD_ITEMS_PER_PAGE=35  # 페이지당 사이트 수 (7x5 그리드)
 
 # Baseline
 BASELINE_REFRESH_INTERVAL_DAYS=0  # 베이스라인 자동 갱신 주기 (일, 0=비활성)
+
+# Trusted Domains (외부 도메인 감사 화이트리스트, 기본 60+개 내장)
+TRUSTED_DOMAINS=                  # 추가 신뢰 도메인 (쉼표 구분, 예: custom-cdn.com,internal.co.kr)
 ```
 
 ---
@@ -712,6 +715,7 @@ volumes:
 | Phase 7 | **완료** | 위변조 탐지 분석 UI 강화 (하이브리드 데이터 대시보드 노출, 설정 페이지) |
 | Phase 8 | **완료** | SNS pixel_only 모드, 스크린샷 품질 관리, 대시보드 UX 개선 |
 | Phase 9 | **완료** | DetailPopup 섹션별 새로고침, 설정 베이스라인 관리, 대시보드 로딩 최적화 |
+| Phase 10 | **완료** | K-WATCH 로고 브랜딩, 외부 도메인 신뢰 화이트리스트 |
 
 ### 주요 구현 세부사항
 
@@ -734,9 +738,18 @@ volumes:
   - 베이스라인에 HTML 데이터 없으면 pixel_only 모드로 자동 fallback
   - `HTML_ANALYSIS_ENABLED=false`로 킬스위치 가능
 - **심각도별 차등 알림**:
-  - 새 외부 도메인 주입 → CRITICAL, 1회 즉시 알림
+  - 새 외부 도메인 주입 → CRITICAL, 1회 즉시 알림 (신뢰 도메인 제외)
   - 페이지 구조 변경 → CRITICAL, 2회 연속 시 알림
   - 픽셀만 변경 → WARNING, 3회 연속 시 알림
+- **외부 도메인 신뢰 화이트리스트** (Phase 10):
+  - 검색/포털 (google, naver, daum, kakao), 소셜미디어 (youtube, facebook, instagram, twitter), CDN (cloudflare, jsdelivr, cloudfront), 한국 공공 (go.kr, or.kr), 분석/인프라 (hotjar, clarity, amazonaws) 등 60+개 도메인
+  - 서브도메인 자동 매치 (예: `cdn.naver.com` → `naver.com` 신뢰)
+  - 신뢰 도메인은 `newDomains`에서 제외되어 CRITICAL 알림 미발생
+  - `TRUSTED_DOMAINS` 환경변수로 추가 도메인 설정 가능 (쉼표 구분)
+- **K-WATCH 로고 브랜딩** (Phase 10):
+  - KDN 심볼 + Orbitron 폰트 K-WATCH 로고 컴포넌트 (`KwatchLogo.tsx`, sm/md/lg 사이즈)
+  - 1행: KDN 심볼 + K(빨강)-WATCH(흰색), 2행: "대국민 웹서비스 통합관제 시스템" (자동 letter-spacing 정렬)
+  - 로그인 페이지(lg), 대시보드 SummaryBar(sm), 관리 페이지 헤더(sm) 적용
 - **사이트별 동적 영역 제외**: `ignoreSelectors` (CSS 셀렉터 배열)로 사이트별 동적 영역 설정 가능
 - **사이트별 위변조 탐지 모드**: `defacementMode` 필드로 사이트별 탐지 모드 설정
   - `auto` (기본): 기존 하이브리드 탐지 동작 (베이스라인에 HTML 데이터 있으면 hybrid, 없으면 pixel_only)

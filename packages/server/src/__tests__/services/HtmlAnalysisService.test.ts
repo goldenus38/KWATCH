@@ -347,6 +347,38 @@ describe('HtmlAnalysisService', () => {
       expect(result.newDomains).toHaveLength(0);
     });
 
+    it('should not flag trusted domains as new (naver, google, youtube, etc.)', () => {
+      const baselineHtml = '<html><body><p>Content</p></body></html>';
+      const currentHtml = `
+        <html><body>
+          <script src="https://cdn.naver.com/analytics.js"></script>
+          <script src="https://www.googletagmanager.com/gtag.js"></script>
+          <iframe src="https://www.youtube.com/embed/abc"></iframe>
+          <script src="https://t1.daumcdn.net/kas/static/ba.min.js"></script>
+          <script src="https://evil-hacker.com/malware.js"></script>
+          <p>Content</p>
+        </body></html>
+      `;
+
+      const structuralHash = service.extractStructuralFingerprint(baselineHtml);
+
+      const result = service.compareWithBaseline(currentHtml, siteUrl, {
+        structuralHash,
+        domainWhitelist: [],
+      });
+
+      // 신뢰 도메인은 newDomains에 포함되지 않아야 함
+      expect(result.newDomains).not.toContain('cdn.naver.com');
+      expect(result.newDomains).not.toContain('www.googletagmanager.com');
+      expect(result.newDomains).not.toContain('www.youtube.com');
+      expect(result.newDomains).not.toContain('t1.daumcdn.net');
+      // 악성 도메인은 감지되어야 함
+      expect(result.newDomains).toContain('evil-hacker.com');
+      expect(result.newDomains).toHaveLength(1);
+      // 점수: 악성 1개만 반영 (-25)
+      expect(result.criticalElementsScore).toBe(75);
+    });
+
     it('should detect removed domains with minor score reduction', () => {
       const html = '<html><body><p>Content</p></body></html>';
       const structuralHash = service.extractStructuralFingerprint(html);

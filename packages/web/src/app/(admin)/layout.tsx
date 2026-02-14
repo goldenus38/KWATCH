@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { KwatchLogo } from '@/components/common/KwatchLogo';
 import type { User } from '@/types';
 
 export default function AdminLayout({
@@ -70,7 +71,7 @@ export default function AdminLayout({
               />
             </svg>
           </button>
-          <h1 className="text-2xl font-bold">KWATCH 관리</h1>
+          <KwatchLogo size="sm" />
         </div>
 
         {/* 사용자 정보 및 로그아웃 */}

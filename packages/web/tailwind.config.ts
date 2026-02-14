@@ -37,6 +37,7 @@ const config: Config = {
       fontFamily: {
         sans: ['Noto Sans KR', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        orbitron: ['Orbitron', 'sans-serif'],
       },
       fontSize: {
         // 전광판 가독성을 위한 최소 폰트 사이즈

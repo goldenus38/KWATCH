@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { KwatchLogo } from '@/components/common/KwatchLogo';
 import { DashboardSummary, SummaryFilterType } from '@/types';
 import { formatTime } from '@/lib/utils';
 import { STATUS_COLORS } from '@/lib/constants';
@@ -35,15 +36,8 @@ export function SummaryBar({
   return (
     <div className="w-full bg-kwatch-bg-secondary border-b border-kwatch-bg-tertiary px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* 왼쪽: 로고 및 타이틀 */}
-        <div className="flex items-center gap-3">
-          <div className="text-2xl font-bold text-kwatch-text-primary">
-            KWATCH
-          </div>
-          <div className="text-dashboard-base text-kwatch-text-secondary">
-            웹사이트 관제 대시보드
-          </div>
-        </div>
+        {/* 왼쪽: 로고 */}
+        <KwatchLogo size="sm" />
 
         {/* 중앙: 통계 */}
         {isLoading ? (
