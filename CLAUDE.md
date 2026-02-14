@@ -366,6 +366,8 @@ PUT    /api/settings/monitoring/check-interval      # HTTP 체크 주기 일괄 
 PUT    /api/settings/monitoring/screenshot-interval  # 스크린샷 주기 변경
 PUT    /api/settings/monitoring/defacement-interval   # 위변조 체크 주기 변경
 GET    /api/settings/defacement             # 위변조 탐지 설정 조회 (읽기 전용, 환경변수 기반)
+GET    /api/settings/dashboard              # 대시보드 설정 조회 (autoRotateInterval, itemsPerPage)
+PUT    /api/settings/dashboard              # 대시보드 설정 저장 (런타임 변경)
 ```
 
 ### WebSocket 이벤트
@@ -535,10 +537,11 @@ SCREENSHOT_TIMEOUT=15000
 DEFAULT_CHECK_INTERVAL=300
 DEFAULT_TIMEOUT=30
 DEFACEMENT_THRESHOLD=85
-DEFACEMENT_WEIGHT_PIXEL=0.3
-DEFACEMENT_WEIGHT_STRUCTURAL=0.3
-DEFACEMENT_WEIGHT_CRITICAL=0.4
+DEFACEMENT_WEIGHT_PIXEL=0.6
+DEFACEMENT_WEIGHT_STRUCTURAL=0.2
+DEFACEMENT_WEIGHT_CRITICAL=0.2
 HTML_ANALYSIS_ENABLED=true
+RESPONSE_TIME_WARNING_MS=100000
 
 # Alert Channels (JSON)
 ALERT_EMAIL_SMTP_HOST=
@@ -554,7 +557,7 @@ DASHBOARD_AUTO_ROTATE_INTERVAL=15000  # 자동 로테이션 간격 (ms)
 DASHBOARD_ITEMS_PER_PAGE=35  # 페이지당 사이트 수 (7x5 그리드)
 
 # Baseline
-BASELINE_REFRESH_INTERVAL_DAYS=0  # 베이스라인 자동 갱신 주기 (일, 0=비활성)
+BASELINE_REFRESH_INTERVAL_DAYS=30  # 베이스라인 자동 갱신 주기 (일, 기본 30일)
 
 # Trusted Domains (외부 도메인 감사 화이트리스트, 기본 60+개 내장)
 TRUSTED_DOMAINS=                  # 추가 신뢰 도메인 (쉼표 구분, 예: custom-cdn.com,internal.co.kr)
@@ -716,6 +719,7 @@ volumes:
 | Phase 8 | **완료** | SNS pixel_only 모드, 스크린샷 품질 관리, 대시보드 UX 개선 |
 | Phase 9 | **완료** | DetailPopup 섹션별 새로고침, 설정 베이스라인 관리, 대시보드 로딩 최적화 |
 | Phase 10 | **완료** | K-WATCH 로고 브랜딩, 외부 도메인 신뢰 화이트리스트 |
+| Phase 11 | **완료** | v1.0 수정요구사항 반영 (대시보드 UX, 관리 레이아웃, 설정 기본값) |
 
 ### 주요 구현 세부사항
 
@@ -734,7 +738,7 @@ volumes:
   - Layer 1: **외부 도메인 감사** — `<script>`, `<iframe>`, `<link>` 등의 src에서 새 외부 도메인 탐지
   - Layer 2: **HTML 구조 핑거프린트** — 태그 트리 SHA-256 해시로 페이지 구조 변경 감지
   - Layer 3: **픽셀 비교** — 기존 pixelmatch 기반 시각적 변화 감지
-  - 하이브리드 점수: `pixel×0.3 + structural×0.3 + critical×0.4`
+  - 하이브리드 점수: `pixel×0.6 + structural×0.2 + critical×0.2`
   - 베이스라인에 HTML 데이터 없으면 pixel_only 모드로 자동 fallback
   - `HTML_ANALYSIS_ENABLED=false`로 킬스위치 가능
 - **심각도별 차등 알림**:
@@ -766,8 +770,8 @@ volumes:
 - **인증 미들웨어**: Role 비교 시 case-insensitive (Prisma enum은 대문자, 코드는 소문자)
 - **최종 리다이렉트 URL 기록**: `finalUrl` 필드로 `response.url` 저장 (DB `monitoring_results.final_url` 컬럼), DetailPopup에서 요청 URL과 다를 때 최종 URL 표시
 - **대시보드 기관명 표시**: SiteCard/DetailPopup에서 `organizationName`이 있으면 "기관명 사이트명" 형식으로 표시, MonitoringStatus API 응답에 `organizationName` 필드 추가
-- **관리 페이지 컬럼 순서 변경**: 카테고리→기관명→사이트명→URL 순서로 가독성 개선
-- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 73개, HtmlAnalysisService 29개 포함)
+- **관리 페이지 컬럼 순서 변경**: 분류→기관명→사이트명→URL 순서로 가독성 개선
+- **테스트**: Vitest + Supertest, Prisma/Redis/WebSocket/Logger 전체 mock (총 74개, HtmlAnalysisService 46개 포함)
 - **위변조 탐지 분석 UI** (Phase 7):
   - DetailPopup: "베이스라인 비교" → "위변조 탐지 분석"으로 교체
     - 탐지 방식 뱃지 (하이브리드/픽셀 전용), 종합 유사도 점수 헤더
@@ -825,7 +829,7 @@ volumes:
   - `POST /api/settings/defacement/baseline-bulk` — 전체 활성 사이트 베이스라인 일괄 교체
   - `GET/PUT /api/settings/defacement/baseline-schedule` — 자동 갱신 주기 조회/설정
   - `SchedulerService.scheduleBaselineRefresh()` — repeatable cron job으로 주기적 베이스라인 갱신
-  - `BASELINE_REFRESH_INTERVAL_DAYS` 환경변수 (기본 0 = 비활성)
+  - `BASELINE_REFRESH_INTERVAL_DAYS` 환경변수 (기본 30일)
   - 프론트엔드: 일괄 교체 버튼 + 진행률/결과 표시 + 프리셋 버튼(비활성/7일/14일/30일)
 - **대시보드 로딩 성능 최적화 (Phase 9)**:
   - Prisma `findMany` + `include` + `take` → Raw SQL correlated subquery 교체 (499사이트 기준 107초 → 0.3초)
@@ -833,14 +837,25 @@ volumes:
   - `GET /api/monitoring/statuses` 응답에 `{ statuses, summary }` 통합 반환
   - 프론트엔드 API 호출 3회 → 2회 축소 (`useMonitoringData` 훅)
   - `httpServer.listen()`을 `scheduleAllWebsites()` 전에 배치하여 서버 즉시 응답 가능
+- **v1.0 수정요구사항 반영 (Phase 11)** — 운영팀 피드백 24건 중 23건 반영:
+  - **SummaryBar 디자인 개선**: 통계 숫자/라벨 크기 증가, 마지막 스캔 시간 정렬 수정 (`items-baseline` + `tabular-nums`), Unicode ⏸/▶/⚙ → SVG 아이콘 교체, 우측 컨트롤 버튼 통일 (`p-2 rounded-lg` + 구분선)
+  - **관리 레이아웃 구조 변경**: 좌측 사이드바 → 상단 수평 탭 네비게이션, "대시보드로 돌아가기" → 헤더 좌측 화살표 아이콘 버튼
+  - **용어 통일**: "카테고리" → "분류" (관리 레이아웃, 분류 관리 페이지, 웹사이트 관리 테이블/폼 전체)
+  - **웹사이트 관리 개선**: 검색 placeholder에 "기관명, 사이트명, URL" 안내, 컬럼명 변경 ("액션"→"관리", "점검주기(초)"→"점검주기"), 텍스트 버튼 → SVG 아이콘 버튼 (연필/휴지통), 폼 필드 순서 변경 (분류→기관명→사이트명→URL 순), 4개 필드 필수값 검증
+  - **알림 이력 개선**: "기관명" 컬럼 추가, "웹사이트" → "사이트명" 컬럼명 변경, "알 수 없음" → "-" 대체, 서버 응답에 `organizationName` 평탄화
+  - **대시보드 정렬 안정화**: `sortVersion` 카운터 도입, 정렬 순서(ref)와 상태 데이터(Map) 분리, WebSocket 업데이트 시 순서 유지 (full refetch 시에만 재정렬)
+  - **설정 기본값 변경**: 응답시간 경고 기본값 10s→100s, 위변조 가중치 pixel 30%→60%/structural 30%→20%/critical 40%→20%, 베이스라인 갱신 주기 비활성→30일
+  - **대시보드 설정 저장**: `GET/PUT /api/settings/dashboard` 엔드포인트 추가, 대시보드 페이지에서 API로 설정값 로드, 설정 페이지에서 저장 버튼 동작
+  - **라벨 변경**: "베이스라인 관리" → "베이스 스크린샷 관리", 응답시간 경고 프리셋 10s/30s/60s/100s
+  - **보류**: 알림 채널 설정 UI (환경변수→DB 기반 전환 필요, 별도 Phase로 분리)
 
 ### 하이브리드 위변조 탐지 환경변수
 
 ```env
 # 하이브리드 점수 가중치 (합계 1.0)
-DEFACEMENT_WEIGHT_PIXEL=0.3
-DEFACEMENT_WEIGHT_STRUCTURAL=0.3
-DEFACEMENT_WEIGHT_CRITICAL=0.4
+DEFACEMENT_WEIGHT_PIXEL=0.6
+DEFACEMENT_WEIGHT_STRUCTURAL=0.2
+DEFACEMENT_WEIGHT_CRITICAL=0.2
 
 # HTML 분석 킬스위치 (false로 설정 시 pixel_only 모드)
 HTML_ANALYSIS_ENABLED=true
@@ -1033,7 +1048,7 @@ bash scripts/deploy.sh
 
 ```bash
 cd packages/server
-npx vitest run          # 전체 테스트 (57개)
+npx vitest run          # 전체 테스트 (74개)
 npx vitest run --coverage  # 커버리지 포함
 npx tsc --noEmit        # 타입 체크
 ```

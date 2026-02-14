@@ -41,14 +41,14 @@ export const config = {
     screenshotConcurrency: parseInt(process.env.SCREENSHOT_CONCURRENCY || '15', 10),
     defacementConcurrency: parseInt(process.env.DEFACEMENT_CONCURRENCY || '8', 10),
     staggerWindowSeconds: parseInt(process.env.STAGGER_WINDOW_SECONDS || '60', 10),
-    responseTimeWarningMs: parseInt(process.env.RESPONSE_TIME_WARNING_MS || '10000', 10),
+    responseTimeWarningMs: parseInt(process.env.RESPONSE_TIME_WARNING_MS || '100000', 10),
     hybridWeights: {
-      pixel: parseFloat(process.env.DEFACEMENT_WEIGHT_PIXEL || '0.3'),
-      structural: parseFloat(process.env.DEFACEMENT_WEIGHT_STRUCTURAL || '0.3'),
-      critical: parseFloat(process.env.DEFACEMENT_WEIGHT_CRITICAL || '0.4'),
+      pixel: parseFloat(process.env.DEFACEMENT_WEIGHT_PIXEL || '0.6'),
+      structural: parseFloat(process.env.DEFACEMENT_WEIGHT_STRUCTURAL || '0.2'),
+      critical: parseFloat(process.env.DEFACEMENT_WEIGHT_CRITICAL || '0.2'),
     },
     htmlAnalysisEnabled: process.env.HTML_ANALYSIS_ENABLED !== 'false',
-    baselineRefreshIntervalDays: parseInt(process.env.BASELINE_REFRESH_INTERVAL_DAYS || '0', 10),
+    baselineRefreshIntervalDays: parseInt(process.env.BASELINE_REFRESH_INTERVAL_DAYS || '30', 10),
   },
 
   // Alert Channels

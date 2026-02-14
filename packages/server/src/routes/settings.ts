@@ -199,8 +199,8 @@ router.put('/monitoring/response-time-threshold', authenticate, authorize('admin
       return;
     }
 
-    if (responseTimeWarningMs < 1000 || responseTimeWarningMs > 60000) {
-      sendError(res, 'INVALID_INPUT', '응답 시간 경고 임계값은 1000ms~60000ms 사이여야 합니다.', 400);
+    if (responseTimeWarningMs < 1000 || responseTimeWarningMs > 300000) {
+      sendError(res, 'INVALID_INPUT', '응답 시간 경고 임계값은 1000ms~300000ms 사이여야 합니다.', 400);
       return;
     }
 
@@ -580,6 +580,58 @@ router.post('/server/restart', authenticate, authorize('admin'), async (req, res
   logger.info('관리자 요청으로 서버 재시작');
   sendSuccess(res, { message: '서버를 재시작합니다.' });
   setTimeout(() => process.exit(0), 1000);
+});
+
+/**
+ * GET /api/settings/dashboard
+ * 대시보드 설정 조회
+ */
+router.get('/dashboard', authenticate, async (req, res) => {
+  sendSuccess(res, {
+    autoRotateInterval: config.dashboard.autoRotateInterval,
+    itemsPerPage: config.dashboard.itemsPerPage,
+  });
+});
+
+/**
+ * PUT /api/settings/dashboard
+ * 대시보드 설정 변경 (런타임)
+ * Body: { autoRotateInterval?: number, itemsPerPage?: number }
+ */
+router.put('/dashboard', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { autoRotateInterval, itemsPerPage } = req.body;
+
+    if (autoRotateInterval !== undefined) {
+      if (typeof autoRotateInterval !== 'number' || autoRotateInterval < 5000 || autoRotateInterval > 120000) {
+        sendError(res, 'INVALID_INPUT', '자동 로테이션 간격은 5000ms~120000ms 사이여야 합니다.', 400);
+        return;
+      }
+      (config.dashboard as any).autoRotateInterval = Math.round(autoRotateInterval);
+    }
+
+    if (itemsPerPage !== undefined) {
+      if (typeof itemsPerPage !== 'number' || itemsPerPage < 10 || itemsPerPage > 100) {
+        sendError(res, 'INVALID_INPUT', '페이지당 표시 수는 10~100 사이여야 합니다.', 400);
+        return;
+      }
+      (config.dashboard as any).itemsPerPage = Math.round(itemsPerPage);
+    }
+
+    logger.info('대시보드 설정 변경:', {
+      autoRotateInterval: config.dashboard.autoRotateInterval,
+      itemsPerPage: config.dashboard.itemsPerPage,
+    });
+
+    sendSuccess(res, {
+      autoRotateInterval: config.dashboard.autoRotateInterval,
+      itemsPerPage: config.dashboard.itemsPerPage,
+      message: '대시보드 설정이 변경되었습니다.',
+    });
+  } catch (error) {
+    logger.error('대시보드 설정 변경 오류:', error);
+    sendError(res, 'UPDATE_ERROR', '대시보드 설정 변경 중 오류가 발생했습니다.', 500);
+  }
 });
 
 export default router;

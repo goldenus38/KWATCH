@@ -174,8 +174,8 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
     if (description) description = decodeHtmlEntities(description);
 
     // 입력 유효성 검사
-    if (!url || !name) {
-      sendError(res, 'INVALID_INPUT', 'URL과 웹사이트명은 필수입니다.', 400);
+    if (!url || !name || !organizationName || !categoryId) {
+      sendError(res, 'INVALID_INPUT', '분류, 기관명, 사이트명, URL은 필수입니다.', 400);
       return;
     }
 

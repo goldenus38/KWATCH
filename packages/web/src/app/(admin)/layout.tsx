@@ -14,7 +14,6 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // 로그인한 사용자 정보 로드 + 인증 가드
   useEffect(() => {
@@ -42,7 +41,7 @@ export default function AdminLayout({
 
   const navItems = [
     { label: '웹사이트 관리', href: '/websites' },
-    { label: '카테고리', href: '/categories' },
+    { label: '분류', href: '/categories' },
     { label: '알림 이력', href: '/alerts' },
     { label: '시스템 설정', href: '/settings' },
   ];
@@ -50,15 +49,16 @@ export default function AdminLayout({
   return (
     <div className="h-screen bg-kwatch-bg-primary text-kwatch-text-primary flex flex-col">
       {/* 상단 헤더 */}
-      <header className="border-b border-kwatch-bg-tertiary bg-kwatch-bg-secondary px-6 py-4 flex items-center justify-between">
+      <header className="flex-shrink-0 border-b border-kwatch-bg-tertiary bg-kwatch-bg-secondary px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-2 hover:bg-kwatch-bg-tertiary rounded-md transition-colors"
-            aria-label="Toggle sidebar"
+          {/* 대시보드로 돌아가기 */}
+          <Link
+            href="/"
+            className="p-2 rounded-lg text-kwatch-text-secondary hover:text-kwatch-text-primary hover:bg-kwatch-bg-tertiary transition-colors"
+            title="대시보드로 돌아가기"
           >
             <svg
-              className="w-6 h-6"
+              className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -67,10 +67,10 @@ export default function AdminLayout({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
               />
             </svg>
-          </button>
+          </Link>
           <KwatchLogo size="sm" />
         </div>
 
@@ -91,62 +91,32 @@ export default function AdminLayout({
         </div>
       </header>
 
-      {/* 메인 콘텐츠 */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* 사이드바 */}
-        <aside
-          className={`bg-kwatch-bg-secondary border-r border-kwatch-bg-tertiary transition-all duration-300 overflow-y-auto ${
-            isSidebarOpen ? 'w-64' : 'w-0'
-          }`}
-        >
-          <nav className="p-4 space-y-2">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`block px-4 py-3 rounded-md transition-colors ${
-                    isActive
-                      ? 'bg-kwatch-accent text-white font-medium'
-                      : 'text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary hover:text-kwatch-text-primary'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* 대시보드로 돌아가기 */}
-          <div className="p-4 border-t border-kwatch-bg-tertiary mt-4">
-            <Link
-              href="/"
-              className="flex items-center gap-2 px-4 py-3 rounded-md bg-kwatch-accent hover:bg-kwatch-accent-hover text-white font-medium transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+      {/* 상단 탭 네비게이션 */}
+      <nav className="flex-shrink-0 bg-kwatch-bg-secondary border-b border-kwatch-bg-tertiary px-6">
+        <div className="flex gap-1">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  isActive
+                    ? 'border-kwatch-accent text-kwatch-accent'
+                    : 'border-transparent text-kwatch-text-secondary hover:text-kwatch-text-primary hover:border-kwatch-bg-tertiary'
+                }`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-              대시보드로 돌아가기
-            </Link>
-          </div>
-        </aside>
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
 
-        {/* 콘텐츠 영역 */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6">{user ? children : null}</div>
-        </main>
-      </div>
+      {/* 콘텐츠 영역 - 전체 너비 활용 */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="p-6">{user ? children : null}</div>
+      </main>
     </div>
   );
 }

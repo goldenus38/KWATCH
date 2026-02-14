@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useMonitoringData } from '@/hooks/useMonitoringData';
 import { useAutoRotation } from '@/hooks/useAutoRotation';
 import { connectSocket } from '@/lib/socket';
+import { api } from '@/lib/api';
 import { DEFAULT_ITEMS_PER_PAGE, DEFAULT_AUTO_ROTATE_INTERVAL } from '@/lib/constants';
 import { SummaryBar } from '@/components/dashboard/SummaryBar';
 import { ScreenshotGrid } from '@/components/dashboard/ScreenshotGrid';
@@ -19,12 +20,29 @@ export default function DashboardPage() {
     responseTimeWarningMs,
     isLoading,
     error,
+    sortVersion,
     refetch,
   } = useMonitoringData();
 
   const [isConnected, setIsConnected] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<MonitoringStatus | null>(null);
   const [statusFilter, setStatusFilter] = useState<SummaryFilterType>(null);
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
+  const [autoRotateInterval, setAutoRotateInterval] = useState(DEFAULT_AUTO_ROTATE_INTERVAL);
+
+  // 대시보드 설정을 서버에서 로드
+  useEffect(() => {
+    api.get<{ autoRotateInterval: number; itemsPerPage: number }>('/api/settings/dashboard')
+      .then((res) => {
+        if (res.success && res.data) {
+          setItemsPerPage(res.data.itemsPerPage);
+          setAutoRotateInterval(res.data.autoRotateInterval);
+        }
+      })
+      .catch(() => {
+        // fallback to defaults
+      });
+  }, []);
 
   const filteredStatuses = useMemo(() => {
     if (!statusFilter) return statuses;
@@ -33,7 +51,6 @@ export default function DashboardPage() {
         case 'up':
           return s.isUp && !s.defacementStatus?.isDefaced && (s.responseTimeMs == null || s.responseTimeMs <= responseTimeWarningMs);
         case 'warning':
-          // 정상 응답이지만 느린 경우만 (isUp=true 필수)
           return s.isUp && !s.defacementStatus?.isDefaced && s.responseTimeMs != null && s.responseTimeMs > responseTimeWarningMs;
         case 'down':
           return !s.isUp;
@@ -45,7 +62,6 @@ export default function DashboardPage() {
     });
   }, [statuses, statusFilter, responseTimeWarningMs]);
 
-  const itemsPerPage = DEFAULT_ITEMS_PER_PAGE;
   const totalPages = Math.max(1, Math.ceil(filteredStatuses.length / itemsPerPage));
 
   const {
@@ -55,7 +71,7 @@ export default function DashboardPage() {
     toggleRotation,
   } = useAutoRotation({
     totalPages,
-    interval: DEFAULT_AUTO_ROTATE_INTERVAL,
+    interval: autoRotateInterval,
     enabled: true,
   });
 
@@ -138,6 +154,7 @@ export default function DashboardPage() {
             onSiteClick={handleSiteClick}
             onPageChange={setCurrentPage}
             responseTimeWarningMs={responseTimeWarningMs}
+            sortVersion={sortVersion}
           />
         )}
       </div>

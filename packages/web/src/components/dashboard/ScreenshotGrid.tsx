@@ -13,6 +13,7 @@ interface ScreenshotGridProps {
   onSiteClick: (websiteId: number) => void;
   onPageChange: (page: number) => void;
   responseTimeWarningMs?: number;
+  sortVersion?: number;
 }
 
 /**
@@ -29,20 +30,49 @@ export function ScreenshotGrid({
   onSiteClick,
   onPageChange,
   responseTimeWarningMs = 10000,
+  sortVersion = 0,
 }: ScreenshotGridProps) {
-  // 상태별 정렬 (비정상이 먼저 나타남)
-  const sortedStatuses = useMemo(() => {
-    return [...statuses].sort((a, b) => {
+  // 정렬 순서를 안정화: sortVersion이 변할 때만(full refetch) 재정렬
+  // WebSocket 개별 업데이트는 데이터만 갱신하고 순서는 유지
+  const sortedOrderRef = useRef<number[]>([]);
+
+  // sortVersion 또는 statuses.length 변경 시에만 정렬 순서 재계산
+  useMemo(() => {
+    const sorted = [...statuses].sort((a, b) => {
       const getStatusPriority = (status: MonitoringStatus): number => {
-        if (status.defacementStatus?.isDefaced) return 0; // 위변조: 최우선
-        if (!status.isUp) return 1; // 장애: 다음
-        if (status.isUp && status.responseTimeMs && status.responseTimeMs > responseTimeWarningMs) return 2; // 경고
-        return 3; // 정상: 마지막
+        if (status.defacementStatus?.isDefaced) return 0;
+        if (!status.isUp) return 1;
+        if (status.isUp && status.responseTimeMs && status.responseTimeMs > responseTimeWarningMs) return 2;
+        return 3;
       };
       const priorityDiff = getStatusPriority(a) - getStatusPriority(b);
       return priorityDiff !== 0 ? priorityDiff : a.websiteId - b.websiteId;
     });
-  }, [statuses, responseTimeWarningMs]);
+    sortedOrderRef.current = sorted.map((s) => s.websiteId);
+  }, [sortVersion, statuses.length, responseTimeWarningMs]);
+
+  // statusMap으로 데이터 접근 (순서는 sortedOrderRef에 의존)
+  const statusMap = useMemo(() => {
+    const map = new Map<number, MonitoringStatus>();
+    statuses.forEach((s) => map.set(s.websiteId, s));
+    return map;
+  }, [statuses]);
+
+  // 정렬된 순서대로 데이터 조합
+  const sortedStatuses = useMemo(() => {
+    const result: MonitoringStatus[] = [];
+    for (const id of sortedOrderRef.current) {
+      const s = statusMap.get(id);
+      if (s) result.push(s);
+    }
+    // sortedOrder에 없는 새 아이템은 뒤에 추가
+    statuses.forEach((s) => {
+      if (!sortedOrderRef.current.includes(s.websiteId)) {
+        result.push(s);
+      }
+    });
+    return result;
+  }, [statusMap, statuses]);
 
   // 페이지별로 아이템 분할
   const pages = useMemo(() => {

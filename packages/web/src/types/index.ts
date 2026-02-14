@@ -193,6 +193,7 @@ export interface Alert {
   id: string;
   websiteId: number;
   websiteName?: string;
+  organizationName?: string;
   alertType: AlertType;
   severity: Severity;
   message: string;
@@ -202,10 +203,30 @@ export interface Alert {
   createdAt: string;
 }
 
+export interface EmailChannelConfig {
+  smtpHost: string;
+  smtpPort: number;
+  from: string;
+  user?: string;
+  pass?: string;
+  to: string[];
+}
+
+export interface SlackChannelConfig {
+  webhookUrl: string;
+}
+
+export interface TelegramChannelConfig {
+  botToken: string;
+  chatId: string;
+}
+
+export type AlertChannelConfig = EmailChannelConfig | SlackChannelConfig | TelegramChannelConfig;
+
 export interface AlertChannel {
   id: number;
   channelType: 'EMAIL' | 'SLACK' | 'TELEGRAM';
-  config: Record<string, unknown>;
+  config: AlertChannelConfig;
   isActive: boolean;
 }
 

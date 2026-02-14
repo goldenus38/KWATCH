@@ -165,20 +165,33 @@ export class AlertService {
    * @param config 이메일 채널 설정
    */
   async sendEmail(alert: any, websiteName: string, config: any): Promise<void> {
-    // TODO: 이메일 설정 확인
-    // TODO: 메일 제목 및 본문 작성
-    // TODO: 심각도에 따른 표시 (INFO, WARNING, CRITICAL)
-    // TODO: 알림 타입별 설명 추가 (DOWN, SLOW, DEFACEMENT 등)
-    // TODO: nodemailer로 발송
-
-    if (!this.emailTransporter || !config.to || config.to.length === 0) {
+    if (!config.to || config.to.length === 0) {
       logger.debug('Email notification skipped (no recipients)');
       return;
     }
 
+    // DB 채널 config에 smtpHost가 있으면 동적 transporter 생성, 없으면 env 기반 fallback
+    let transporter: Transporter | null = null;
+    if (config.smtpHost) {
+      transporter = nodemailer.createTransport({
+        host: config.smtpHost,
+        port: config.smtpPort || 587,
+        secure: config.smtpPort === 465,
+        auth: config.user
+          ? { user: config.user, pass: config.pass }
+          : undefined,
+      });
+    } else {
+      transporter = this.emailTransporter;
+    }
+
+    if (!transporter) {
+      logger.debug('Email notification skipped (no transporter available)');
+      return;
+    }
+
     try {
-      // TODO: 심각도별 제목 prefix
-      const severityPrefix = {
+      const severityPrefix: Record<string, string> = {
         INFO: '[정보]',
         WARNING: '[경고]',
         CRITICAL: '[긴급]',
@@ -207,7 +220,7 @@ export class AlertService {
         `,
       };
 
-      await this.emailTransporter.sendMail(mailOptions);
+      await transporter.sendMail(mailOptions);
 
       logger.info(`Email notification sent for alert ${alert.id}`);
     } catch (error) {
@@ -382,7 +395,7 @@ export class AlertService {
           take: limit,
           skip,
           include: {
-            website: { select: { id: true, name: true } },
+            website: { select: { id: true, name: true, organizationName: true } },
             acknowledger: { select: { id: true, username: true } },
           },
         }),

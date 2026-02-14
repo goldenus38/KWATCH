@@ -27,8 +27,15 @@ router.get('/', async (req, res) => {
 
     const { alerts, total } = await alertService.getAlerts(filter);
 
+    // websiteName, organizationName 평탄화
+    const flatAlerts = alerts.map((alert: any) => ({
+      ...alert,
+      websiteName: alert.website?.name || null,
+      organizationName: alert.website?.organizationName || null,
+    }));
+
     const meta = createPaginationMeta(total, filter.page || 1, filter.limit || 50);
-    sendSuccess(res, alerts, 200, meta);
+    sendSuccess(res, flatAlerts, 200, meta);
   } catch (error) {
     sendError(res, 'LIST_ERROR', '알림 목록 조회 중 오류가 발생했습니다.', 500);
   }
@@ -196,6 +203,91 @@ router.post('/test', authenticate, authorize('admin'), async (req, res) => {
     sendSuccess(res, { message: '알림 테스트 완료', results });
   } catch (error) {
     sendError(res, 'TEST_ERROR', '알림 테스트 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
+ * POST /api/alerts/channels
+ * 알림 채널 생성 (admin only)
+ */
+router.post('/channels', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { channelType, config: channelConfig, isActive } = req.body;
+
+    // channelType 검증
+    if (!channelType || !['EMAIL', 'SLACK', 'TELEGRAM'].includes(channelType)) {
+      sendError(res, 'INVALID_TYPE', '유효하지 않은 채널 유형입니다. (EMAIL, SLACK, TELEGRAM)', 400);
+      return;
+    }
+
+    // config 검증
+    if (!channelConfig || typeof channelConfig !== 'object') {
+      sendError(res, 'INVALID_CONFIG', '채널 설정(config)이 필요합니다.', 400);
+      return;
+    }
+
+    // 채널별 필수 필드 검증
+    if (channelType === 'EMAIL') {
+      if (!channelConfig.smtpHost || !channelConfig.smtpPort || !channelConfig.from || !channelConfig.to || !Array.isArray(channelConfig.to) || channelConfig.to.length === 0) {
+        sendError(res, 'INVALID_EMAIL_CONFIG', 'SMTP 호스트, 포트, 발신 주소, 수신 주소(배열)가 필요합니다.', 400);
+        return;
+      }
+    } else if (channelType === 'SLACK') {
+      if (!channelConfig.webhookUrl) {
+        sendError(res, 'INVALID_SLACK_CONFIG', 'Webhook URL이 필요합니다.', 400);
+        return;
+      }
+    } else if (channelType === 'TELEGRAM') {
+      if (!channelConfig.botToken || !channelConfig.chatId) {
+        sendError(res, 'INVALID_TELEGRAM_CONFIG', 'Bot Token과 Chat ID가 필요합니다.', 400);
+        return;
+      }
+    }
+
+    const channel = await prisma.alertChannel.create({
+      data: {
+        channelType,
+        config: channelConfig,
+        isActive: isActive !== undefined ? isActive : true,
+      },
+    });
+
+    sendSuccess(res, channel, 201);
+  } catch (error) {
+    sendError(res, 'CREATE_ERROR', '알림 채널 생성 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
+ * DELETE /api/alerts/channels/:id
+ * 알림 채널 삭제 (admin only)
+ */
+router.delete('/channels/:id', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const channelId = parseInt(id);
+
+    if (isNaN(channelId)) {
+      sendError(res, 'INVALID_ID', '유효하지 않은 채널 ID입니다.', 400);
+      return;
+    }
+
+    const existingChannel = await prisma.alertChannel.findUnique({
+      where: { id: channelId },
+    });
+
+    if (!existingChannel) {
+      sendError(res, 'NOT_FOUND', '알림 채널을 찾을 수 없습니다.', 404);
+      return;
+    }
+
+    await prisma.alertChannel.delete({
+      where: { id: channelId },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    sendError(res, 'DELETE_ERROR', '알림 채널 삭제 중 오류가 발생했습니다.', 500);
   }
 });
 

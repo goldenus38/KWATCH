@@ -92,10 +92,10 @@ describe('MonitoringService', () => {
           screenshots: null,
           defacement_checks: null,
         },
-        // warning (slow) site
+        // warning (slow) site — response time exceeds 100000ms threshold
         {
           id: 3, name: 'Site C', url: 'https://c.com', organization_name: null,
-          monitoring_results: [{ is_up: true, response_time_ms: 15000, checked_at: now.toISOString(), final_url: 'https://c.com/redirected' }],
+          monitoring_results: [{ is_up: true, response_time_ms: 150000, checked_at: now.toISOString(), final_url: 'https://c.com/redirected' }],
           screenshots: null,
           defacement_checks: null,
         },

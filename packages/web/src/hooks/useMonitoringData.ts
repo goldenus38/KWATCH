@@ -21,6 +21,7 @@ interface UseMonitoringDataReturn {
   responseTimeWarningMs: number;
   isLoading: boolean;
   error: string | null;
+  sortVersion: number;
   refetch: () => Promise<void>;
 }
 
@@ -46,6 +47,7 @@ export function useMonitoringData(
   const [responseTimeWarningMs, setResponseTimeWarningMs] = useState(cachedResponseTimeWarningMs);
   const [isLoading, setIsLoading] = useState(!hasCached);
   const [error, setError] = useState<string | null>(null);
+  const [sortVersion, setSortVersion] = useState(0);
   const fetchingRef = useRef(false);
 
   // 데이터 로딩 (silent=true면 로딩 스켈레톤 없이 백그라운드 갱신)
@@ -80,6 +82,7 @@ export function useMonitoringData(
         setRecentAlerts(alertsRes.data);
         cachedAlerts = alertsRes.data;
       }
+      setSortVersion((v) => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '데이터 로딩 실패');
     } finally {
@@ -193,6 +196,7 @@ export function useMonitoringData(
     responseTimeWarningMs,
     isLoading,
     error,
+    sortVersion,
     refetch: () => fetchData(false),
   };
 }

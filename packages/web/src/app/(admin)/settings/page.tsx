@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { API_BASE_URL } from '@/lib/constants';
-import type { AlertChannel, User, DefacementConfig } from '@/types';
+import type { AlertChannel, User, DefacementConfig, EmailChannelConfig, SlackChannelConfig, TelegramChannelConfig } from '@/types';
 
 export default function SettingsPage() {
   const [alertChannels, setAlertChannels] = useState<AlertChannel[]>([]);
@@ -16,7 +16,7 @@ export default function SettingsPage() {
 
   // 모니터링 설정
   const [checkInterval, setCheckInterval] = useState(300);
-  const [responseTimeWarning, setResponseTimeWarning] = useState(10000);
+  const [responseTimeWarning, setResponseTimeWarning] = useState(100000);
   const [monitoringStats, setMonitoringStats] = useState<{
     totalWebsites: number;
     checkInterval: { avg: number; min: number; max: number; mode: number };
@@ -27,16 +27,33 @@ export default function SettingsPage() {
 
   // 위변조 탐지 설정
   const [defacementConfig, setDefacementConfig] = useState<DefacementConfig | null>(null);
-  const [editWeights, setEditWeights] = useState({ pixel: 30, structural: 30, critical: 40 });
+  const [editWeights, setEditWeights] = useState({ pixel: 60, structural: 20, critical: 20 });
   const [editThreshold, setEditThreshold] = useState(85);
   const [editHtmlEnabled, setEditHtmlEnabled] = useState(true);
   const [isSavingDefacement, setIsSavingDefacement] = useState(false);
+
+  // 대시보드 설정
+  const [dashboardAutoRotate, setDashboardAutoRotate] = useState(15);
+  const [dashboardItemsPerPage, setDashboardItemsPerPage] = useState(35);
+  const [isSavingDashboard, setIsSavingDashboard] = useState(false);
 
   // 베이스라인 관리
   const [isBulkRefreshing, setIsBulkRefreshing] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ total: number; updated: number; skipped: number; failed: number; message: string } | null>(null);
   const [baselineScheduleDays, setBaselineScheduleDays] = useState(0);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+
+  // 알림 채널 폼
+  const [showChannelForm, setShowChannelForm] = useState(false);
+  const [editingChannel, setEditingChannel] = useState<AlertChannel | null>(null);
+  const [channelFormType, setChannelFormType] = useState<'EMAIL' | 'SLACK' | 'TELEGRAM'>('EMAIL');
+  const [channelFormEmail, setChannelFormEmail] = useState({ smtpHost: '', smtpPort: 587, from: '', user: '', pass: '', to: [] as string[] });
+  const [channelFormSlack, setChannelFormSlack] = useState({ webhookUrl: '' });
+  const [channelFormTelegram, setChannelFormTelegram] = useState({ botToken: '', chatId: '' });
+  const [emailToInput, setEmailToInput] = useState('');
+  const [isSavingChannel, setIsSavingChannel] = useState(false);
+  const [isTestingChannel, setIsTestingChannel] = useState<Record<number, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<number, { success: boolean; error?: string }>>({});
 
   // 서버 재시작
   const [isRestarting, setIsRestarting] = useState(false);
@@ -256,6 +273,47 @@ export default function SettingsPage() {
     }
   };
 
+  // 대시보드 설정 조회
+  const fetchDashboardSettings = async () => {
+    try {
+      const response = await api.get<{ autoRotateInterval: number; itemsPerPage: number }>('/api/settings/dashboard');
+      if (response.success && response.data) {
+        setDashboardAutoRotate(Math.round(response.data.autoRotateInterval / 1000));
+        setDashboardItemsPerPage(response.data.itemsPerPage);
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard settings:', err);
+    }
+  };
+
+  // 대시보드 설정 저장
+  const handleSaveDashboard = async () => {
+    setIsSavingDashboard(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await api.put<{ autoRotateInterval: number; itemsPerPage: number; message: string }>(
+        '/api/settings/dashboard',
+        {
+          autoRotateInterval: dashboardAutoRotate * 1000,
+          itemsPerPage: dashboardItemsPerPage,
+        },
+      );
+
+      if (response.success && response.data) {
+        setSuccessMessage(response.data.message);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setError(response.error?.message || '대시보드 설정 저장에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsSavingDashboard(false);
+    }
+  };
+
   // 체크 주기 저장
   const handleSaveCheckInterval = async () => {
     setIsSavingInterval(true);
@@ -362,6 +420,7 @@ export default function SettingsPage() {
     fetchMonitoringSettings();
     fetchDefacementConfig();
     fetchBaselineSchedule();
+    fetchDashboardSettings();
     if (currentUser?.role?.toLowerCase() === 'admin') {
       fetchAlertChannels();
       fetchUsers();
@@ -392,6 +451,142 @@ export default function SettingsPage() {
       setError('서버 통신 중 오류가 발생했습니다.');
       console.error('Error updating channel:', err);
     }
+  };
+
+  // 채널 추가 폼 초기화
+  const openChannelForm = (channel?: AlertChannel) => {
+    if (channel) {
+      setEditingChannel(channel);
+      setChannelFormType(channel.channelType);
+      if (channel.channelType === 'EMAIL') {
+        const c = channel.config as EmailChannelConfig;
+        setChannelFormEmail({ smtpHost: c.smtpHost || '', smtpPort: c.smtpPort || 587, from: c.from || '', user: c.user || '', pass: c.pass || '', to: c.to || [] });
+      } else if (channel.channelType === 'SLACK') {
+        const c = channel.config as SlackChannelConfig;
+        setChannelFormSlack({ webhookUrl: c.webhookUrl || '' });
+      } else if (channel.channelType === 'TELEGRAM') {
+        const c = channel.config as TelegramChannelConfig;
+        setChannelFormTelegram({ botToken: c.botToken || '', chatId: c.chatId || '' });
+      }
+    } else {
+      setEditingChannel(null);
+      setChannelFormType('EMAIL');
+      setChannelFormEmail({ smtpHost: '', smtpPort: 587, from: '', user: '', pass: '', to: [] });
+      setChannelFormSlack({ webhookUrl: '' });
+      setChannelFormTelegram({ botToken: '', chatId: '' });
+    }
+    setEmailToInput('');
+    setShowChannelForm(true);
+  };
+
+  const closeChannelForm = () => {
+    setShowChannelForm(false);
+    setEditingChannel(null);
+  };
+
+  const getChannelConfig = () => {
+    switch (channelFormType) {
+      case 'EMAIL': return channelFormEmail;
+      case 'SLACK': return channelFormSlack;
+      case 'TELEGRAM': return channelFormTelegram;
+    }
+  };
+
+  const handleSaveChannel = async () => {
+    setIsSavingChannel(true);
+    setError(null);
+
+    try {
+      const config = getChannelConfig();
+
+      if (editingChannel) {
+        const response = await api.put(`/api/alerts/channels/${editingChannel.id}`, { config });
+        if (response.success) {
+          setSuccessMessage('알림 채널이 수정되었습니다.');
+          setTimeout(() => setSuccessMessage(null), 3000);
+          closeChannelForm();
+          fetchAlertChannels();
+        } else {
+          setError(response.error?.message || '알림 채널 수정에 실패했습니다.');
+        }
+      } else {
+        const response = await api.post('/api/alerts/channels', {
+          channelType: channelFormType,
+          config,
+        });
+        if (response.success) {
+          setSuccessMessage('알림 채널이 추가되었습니다.');
+          setTimeout(() => setSuccessMessage(null), 3000);
+          closeChannelForm();
+          fetchAlertChannels();
+        } else {
+          setError(response.error?.message || '알림 채널 추가에 실패했습니다.');
+        }
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsSavingChannel(false);
+    }
+  };
+
+  const handleDeleteChannel = async (channelId: number) => {
+    if (!window.confirm('이 알림 채널을 삭제하시겠습니까?')) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/alerts/channels/${channelId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('kwatch_token')}`,
+        },
+      });
+
+      if (response.status === 204 || response.ok) {
+        setAlertChannels(alertChannels.filter((c) => c.id !== channelId));
+        setSuccessMessage('알림 채널이 삭제되었습니다.');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setError('알림 채널 삭제에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleTestChannel = async (channelId: number, channelType: string) => {
+    setIsTestingChannel((prev) => ({ ...prev, [channelId]: true }));
+    setTestResults((prev) => { const next = { ...prev }; delete next[channelId]; return next; });
+
+    try {
+      const response = await api.post<{ results: { channel: string; success: boolean; error?: string }[] }>('/api/alerts/test', { channelType });
+
+      if (response.success && response.data?.results) {
+        const result = response.data.results.find((r) => r.channel === channelType);
+        if (result) {
+          setTestResults((prev) => ({ ...prev, [channelId]: { success: result.success, error: result.error } }));
+        } else {
+          setTestResults((prev) => ({ ...prev, [channelId]: { success: false, error: '해당 채널의 테스트 결과가 없습니다.' } }));
+        }
+      } else {
+        setTestResults((prev) => ({ ...prev, [channelId]: { success: false, error: '테스트 요청에 실패했습니다.' } }));
+      }
+    } catch (err) {
+      setTestResults((prev) => ({ ...prev, [channelId]: { success: false, error: '서버 통신 중 오류가 발생했습니다.' } }));
+    } finally {
+      setIsTestingChannel((prev) => ({ ...prev, [channelId]: false }));
+    }
+  };
+
+  const addEmailRecipient = () => {
+    const email = emailToInput.trim();
+    if (email && !channelFormEmail.to.includes(email)) {
+      setChannelFormEmail({ ...channelFormEmail, to: [...channelFormEmail.to, email] });
+      setEmailToInput('');
+    }
+  };
+
+  const removeEmailRecipient = (email: string) => {
+    setChannelFormEmail({ ...channelFormEmail, to: channelFormEmail.to.filter((e) => e !== email) });
   };
 
   const formatUptime = (seconds: number): string => {
@@ -545,14 +740,14 @@ export default function SettingsPage() {
               <input
                 type="number"
                 value={responseTimeWarning}
-                onChange={(e) => setResponseTimeWarning(Math.max(1000, Math.min(60000, parseInt(e.target.value) || 1000)))}
+                onChange={(e) => setResponseTimeWarning(Math.max(1000, Math.min(300000, parseInt(e.target.value) || 1000)))}
                 min="1000"
-                max="60000"
+                max="300000"
                 step="1000"
                 className="w-32 px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
               />
-              <div className="flex gap-2">
-                {[3000, 5000, 10000, 15000, 30000].map((val) => (
+              <div className="flex gap-2 flex-wrap">
+                {[10000, 30000, 60000, 100000].map((val) => (
                   <button
                     key={val}
                     onClick={() => setResponseTimeWarning(val)}
@@ -752,7 +947,7 @@ export default function SettingsPage() {
       {currentUser?.role?.toLowerCase() === 'admin' && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-kwatch-text-primary">
-            베이스라인 관리
+            베이스 스크린샷 관리
           </h2>
 
           <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 space-y-6">
@@ -844,62 +1039,323 @@ export default function SettingsPage() {
       {/* 섹션 3: 알림 채널 설정 (admin 전용) */}
       {currentUser?.role?.toLowerCase() === 'admin' && (
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-kwatch-text-primary">
-            알림 채널 설정
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-kwatch-text-primary">
+              알림 채널 설정
+            </h2>
+            <button
+              onClick={() => openChannelForm()}
+              className="px-4 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover text-white rounded-md font-medium transition-colors text-sm"
+            >
+              + 채널 추가
+            </button>
+          </div>
+
+          {/* 채널 추가/수정 폼 */}
+          {showChannelForm && (
+            <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-accent p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-kwatch-text-primary">
+                {editingChannel ? '채널 수정' : '채널 추가'}
+              </h3>
+
+              {/* 채널 유형 선택 (추가 시에만) */}
+              {!editingChannel && (
+                <div>
+                  <label className="block text-sm font-medium text-kwatch-text-primary mb-2">채널 유형</label>
+                  <div className="flex gap-2">
+                    {(['EMAIL', 'SLACK', 'TELEGRAM'] as const).map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setChannelFormType(type)}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          channelFormType === type
+                            ? 'bg-kwatch-accent text-white'
+                            : 'bg-kwatch-bg-primary border border-kwatch-bg-tertiary text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary'
+                        }`}
+                      >
+                        {getChannelTypeLabel(type)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* EMAIL 폼 */}
+              {channelFormType === 'EMAIL' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-kwatch-text-muted mb-1">SMTP 호스트 *</label>
+                      <input
+                        type="text"
+                        value={channelFormEmail.smtpHost}
+                        onChange={(e) => setChannelFormEmail({ ...channelFormEmail, smtpHost: e.target.value })}
+                        placeholder="smtp.example.com"
+                        className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-kwatch-text-muted mb-1">SMTP 포트 *</label>
+                      <input
+                        type="number"
+                        value={channelFormEmail.smtpPort}
+                        onChange={(e) => setChannelFormEmail({ ...channelFormEmail, smtpPort: parseInt(e.target.value) || 587 })}
+                        placeholder="587"
+                        className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-kwatch-text-muted mb-1">발신 주소 *</label>
+                    <input
+                      type="email"
+                      value={channelFormEmail.from}
+                      onChange={(e) => setChannelFormEmail({ ...channelFormEmail, from: e.target.value })}
+                      placeholder="alerts@example.com"
+                      className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-kwatch-text-muted mb-1">SMTP 사용자</label>
+                      <input
+                        type="text"
+                        value={channelFormEmail.user}
+                        onChange={(e) => setChannelFormEmail({ ...channelFormEmail, user: e.target.value })}
+                        placeholder="(선택)"
+                        className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-kwatch-text-muted mb-1">SMTP 비밀번호</label>
+                      <input
+                        type="password"
+                        value={channelFormEmail.pass}
+                        onChange={(e) => setChannelFormEmail({ ...channelFormEmail, pass: e.target.value })}
+                        placeholder="(선택)"
+                        className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-kwatch-text-muted mb-1">수신 주소 *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={emailToInput}
+                        onChange={(e) => setEmailToInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmailRecipient(); } }}
+                        placeholder="recipient@example.com"
+                        className="flex-1 px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                      />
+                      <button
+                        type="button"
+                        onClick={addEmailRecipient}
+                        className="px-3 py-2 bg-kwatch-bg-tertiary text-kwatch-text-primary rounded-md text-sm hover:bg-kwatch-accent hover:text-white transition-colors"
+                      >
+                        추가
+                      </button>
+                    </div>
+                    {channelFormEmail.to.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {channelFormEmail.to.map((email) => (
+                          <span key={email} className="inline-flex items-center gap-1 px-2 py-1 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded text-xs text-kwatch-text-secondary">
+                            {email}
+                            <button
+                              type="button"
+                              onClick={() => removeEmailRecipient(email)}
+                              className="text-kwatch-text-muted hover:text-kwatch-status-critical ml-1"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* SLACK 폼 */}
+              {channelFormType === 'SLACK' && (
+                <div>
+                  <label className="block text-xs text-kwatch-text-muted mb-1">Webhook URL *</label>
+                  <input
+                    type="text"
+                    value={channelFormSlack.webhookUrl}
+                    onChange={(e) => setChannelFormSlack({ webhookUrl: e.target.value })}
+                    placeholder="https://hooks.slack.com/services/..."
+                    className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                  />
+                </div>
+              )}
+
+              {/* TELEGRAM 폼 */}
+              {channelFormType === 'TELEGRAM' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-kwatch-text-muted mb-1">Bot Token *</label>
+                    <input
+                      type="password"
+                      value={channelFormTelegram.botToken}
+                      onChange={(e) => setChannelFormTelegram({ ...channelFormTelegram, botToken: e.target.value })}
+                      placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                      className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-kwatch-text-muted mb-1">Chat ID *</label>
+                    <input
+                      type="text"
+                      value={channelFormTelegram.chatId}
+                      onChange={(e) => setChannelFormTelegram({ ...channelFormTelegram, chatId: e.target.value })}
+                      placeholder="-1001234567890"
+                      className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 버튼 */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSaveChannel}
+                  disabled={isSavingChannel}
+                  className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors text-sm"
+                >
+                  {isSavingChannel ? '저장 중...' : (editingChannel ? '수정' : '추가')}
+                </button>
+                <button
+                  onClick={closeChannelForm}
+                  className="px-6 py-2 bg-kwatch-bg-tertiary hover:bg-kwatch-bg-primary text-kwatch-text-secondary rounded-md font-medium transition-colors text-sm"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          )}
 
           {!channelsLoaded ? (
             <div className="text-kwatch-text-muted">로딩 중...</div>
-          ) : alertChannels.length === 0 ? (
-            <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6">
-              <p className="text-kwatch-text-muted">
-                설정된 알림 채널이 없습니다. 환경변수(ALERT_EMAIL_*, ALERT_SLACK_*, ALERT_TELEGRAM_*)를 설정한 후 서버를 재시작하세요.
+          ) : alertChannels.length === 0 && !showChannelForm ? (
+            <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 text-center">
+              <p className="text-kwatch-text-muted mb-3">
+                설정된 알림 채널이 없습니다.
               </p>
+              <button
+                onClick={() => openChannelForm()}
+                className="px-4 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover text-white rounded-md font-medium transition-colors text-sm"
+              >
+                + 채널 추가
+              </button>
             </div>
           ) : (
             <div className="space-y-4">
-              {alertChannels.map((channel) => (
-                <div
-                  key={channel.id}
-                  className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 flex items-start justify-between"
-                >
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-kwatch-text-primary mb-2">
-                      {getChannelTypeLabel(channel.channelType)}
-                    </h3>
-                    <div className="text-sm text-kwatch-text-secondary space-y-1">
-                      {/* 채널별 설정 표시 */}
-                      {channel.channelType === 'EMAIL' && (
-                        <p>발신자: {String(channel.config.from || '-')}</p>
-                      )}
-                      {channel.channelType === 'SLACK' && (
-                        <p>
-                          Webhook URL:{' '}
-                          {typeof channel.config.webhookUrl === 'string'
-                            ? `${channel.config.webhookUrl.substring(0, 30)}...`
-                            : '-'}
-                        </p>
-                      )}
-                      {channel.channelType === 'TELEGRAM' && (
-                        <p>Chat ID: {String(channel.config.chatId || '-')}</p>
-                      )}
+              {alertChannels.map((channel) => {
+                const emailConfig = channel.channelType === 'EMAIL' ? channel.config as EmailChannelConfig : null;
+                const slackConfig = channel.channelType === 'SLACK' ? channel.config as SlackChannelConfig : null;
+                const telegramConfig = channel.channelType === 'TELEGRAM' ? channel.config as TelegramChannelConfig : null;
+
+                return (
+                  <div
+                    key={channel.id}
+                    className={`bg-kwatch-bg-secondary rounded-lg border p-6 ${
+                      channel.isActive ? 'border-kwatch-bg-tertiary' : 'border-kwatch-bg-tertiary opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-lg">
+                            {channel.channelType === 'EMAIL' ? '\u2709' : channel.channelType === 'SLACK' ? '\u{1F4AC}' : '\u{1F4E8}'}
+                          </span>
+                          <h3 className="text-lg font-semibold text-kwatch-text-primary">
+                            {getChannelTypeLabel(channel.channelType)}
+                          </h3>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            channel.isActive
+                              ? 'bg-kwatch-status-normal bg-opacity-20 text-kwatch-status-normal'
+                              : 'bg-kwatch-bg-tertiary text-kwatch-text-muted'
+                          }`}>
+                            {channel.isActive ? '활성' : '비활성'}
+                          </span>
+                        </div>
+                        <div className="text-sm text-kwatch-text-secondary space-y-1 ml-8">
+                          {emailConfig && (
+                            <>
+                              <p>SMTP: {emailConfig.smtpHost}:{emailConfig.smtpPort}</p>
+                              <p>발신: {emailConfig.from}</p>
+                              <p>수신: {emailConfig.to?.join(', ') || '-'}</p>
+                            </>
+                          )}
+                          {slackConfig && (
+                            <p>Webhook URL: {slackConfig.webhookUrl ? `${slackConfig.webhookUrl.substring(0, 50)}...` : '-'}</p>
+                          )}
+                          {telegramConfig && (
+                            <>
+                              <p>Bot Token: {'*'.repeat(20)}</p>
+                              <p>Chat ID: {telegramConfig.chatId}</p>
+                            </>
+                          )}
+                        </div>
+
+                        {/* 테스트 결과 */}
+                        {testResults[channel.id] && (
+                          <div className={`mt-2 ml-8 text-sm px-3 py-1.5 rounded ${
+                            testResults[channel.id].success
+                              ? 'bg-kwatch-status-normal bg-opacity-10 text-kwatch-status-normal'
+                              : 'bg-kwatch-status-critical bg-opacity-10 text-kwatch-status-critical'
+                          }`}>
+                            {testResults[channel.id].success
+                              ? '테스트 발송 성공'
+                              : `테스트 실패: ${testResults[channel.id].error}`}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 우측 액션 */}
+                      <div className="ml-4 flex flex-col items-end gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={channel.isActive}
+                            onChange={() => handleChannelToggle(channel.id, channel.isActive)}
+                            className="w-4 h-4"
+                          />
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleTestChannel(channel.id, channel.channelType)}
+                            disabled={isTestingChannel[channel.id] || !channel.isActive}
+                            title={!channel.isActive ? '비활성 채널은 테스트할 수 없습니다' : '테스트 발송'}
+                            className="p-1.5 text-kwatch-text-secondary hover:text-kwatch-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {isTestingChannel[channel.id] ? (
+                              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/></svg>
+                            ) : (
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => openChannelForm(channel)}
+                            title="수정"
+                            className="p-1.5 text-kwatch-text-secondary hover:text-kwatch-accent transition-colors"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteChannel(channel.id)}
+                            title="삭제"
+                            className="p-1.5 text-kwatch-text-secondary hover:text-kwatch-status-critical transition-colors"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="ml-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={channel.isActive}
-                        onChange={() => handleChannelToggle(channel.id, channel.isActive)}
-                        className="w-5 h-5"
-                      />
-                      <span className="text-sm text-kwatch-text-primary">
-                        {channel.isActive ? '활성' : '비활성'}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -918,7 +1374,8 @@ export default function SettingsPage() {
             </label>
             <input
               type="number"
-              defaultValue="15"
+              value={dashboardAutoRotate}
+              onChange={(e) => setDashboardAutoRotate(Math.max(5, Math.min(120, parseInt(e.target.value) || 15)))}
               min="5"
               max="120"
               className="w-full max-w-xs px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
@@ -934,7 +1391,8 @@ export default function SettingsPage() {
             </label>
             <input
               type="number"
-              defaultValue="35"
+              value={dashboardItemsPerPage}
+              onChange={(e) => setDashboardItemsPerPage(Math.max(10, Math.min(100, parseInt(e.target.value) || 35)))}
               min="10"
               max="100"
               className="w-full max-w-xs px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
@@ -945,11 +1403,11 @@ export default function SettingsPage() {
           </div>
 
           <button
-            disabled
-            title="준비 중"
-            className="px-6 py-2 bg-kwatch-accent text-white rounded-md font-medium transition-colors opacity-50 cursor-not-allowed"
+            onClick={handleSaveDashboard}
+            disabled={isSavingDashboard}
+            className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors"
           >
-            저장
+            {isSavingDashboard ? '저장 중...' : '저장'}
           </button>
         </div>
       </div>

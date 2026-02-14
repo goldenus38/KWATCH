@@ -36,7 +36,7 @@ export default function CategoriesPage() {
       if (response.success && response.data) {
         setCategories(response.data);
       } else {
-        setError('카테고리 목록을 불러올 수 없습니다.');
+        setError('분류 목록을 불러올 수 없습니다.');
       }
     } catch (err) {
       setError('서버 통신 중 오류가 발생했습니다.');
@@ -50,7 +50,7 @@ export default function CategoriesPage() {
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      setError('카테고리명은 필수입니다.');
+      setError('분류명은 필수입니다.');
       return;
     }
 
@@ -67,13 +67,13 @@ export default function CategoriesPage() {
       const response = await api.post<Category>('/api/categories', payload);
 
       if (response.success && response.data) {
-        setSuccessMessage('카테고리가 추가되었습니다.');
+        setSuccessMessage('분류가 추가되었습니다.');
         setShowModal(false);
         resetForm();
         fetchCategories();
         setTimeout(() => setSuccessMessage(null), 3000);
       } else {
-        setError('카테고리 추가에 실패했습니다.');
+        setError('분류 추가에 실패했습니다.');
       }
     } catch (err) {
       setError('서버 통신 중 오류가 발생했습니다.');
@@ -87,7 +87,7 @@ export default function CategoriesPage() {
   const handleEditCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCategory || !formData.name.trim()) {
-      setError('카테고리명은 필수입니다.');
+      setError('분류명은 필수입니다.');
       return;
     }
 
@@ -107,13 +107,13 @@ export default function CategoriesPage() {
       );
 
       if (response.success && response.data) {
-        setSuccessMessage('카테고리가 수정되었습니다.');
+        setSuccessMessage('분류가 수정되었습니다.');
         setShowModal(false);
         resetForm();
         fetchCategories();
         setTimeout(() => setSuccessMessage(null), 3000);
       } else {
-        setError('카테고리 수정에 실패했습니다.');
+        setError('분류 수정에 실패했습니다.');
       }
     } catch (err) {
       setError('서버 통신 중 오류가 발생했습니다.');
@@ -125,7 +125,7 @@ export default function CategoriesPage() {
 
   // 카테고리 삭제
   const handleDeleteCategory = async (id: number) => {
-    if (!confirm('이 카테고리를 삭제하시겠습니까?')) {
+    if (!confirm('이 분류를 삭제하시겠습니까?')) {
       return;
     }
 
@@ -135,15 +135,15 @@ export default function CategoriesPage() {
       const response = await api.delete(`/api/categories/${id}`);
 
       if (response.success) {
-        setSuccessMessage('카테고리가 삭제되었습니다.');
+        setSuccessMessage('분류가 삭제되었습니다.');
         fetchCategories();
         setTimeout(() => setSuccessMessage(null), 3000);
       } else if (response.error?.code === 'CATEGORY_HAS_WEBSITES') {
         setError(
-          '이 카테고리에 속한 웹사이트가 있어서 삭제할 수 없습니다. 먼저 웹사이트를 다른 카테고리로 이동하세요.'
+          '이 분류에 속한 웹사이트가 있어서 삭제할 수 없습니다. 먼저 웹사이트를 다른 분류로 이동하세요.'
         );
       } else {
-        setError('카테고리 삭제에 실패했습니다.');
+        setError('분류 삭제에 실패했습니다.');
       }
     } catch (err) {
       setError('서버 통신 중 오류가 발생했습니다.');
@@ -190,7 +190,7 @@ export default function CategoriesPage() {
     <div className="space-y-6">
       {/* 페이지 제목 */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">카테고리 관리</h1>
+        <h1 className="text-3xl font-bold">분류 관리</h1>
         <button
           onClick={openAddModal}
           className="px-4 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover text-white rounded-md font-medium transition-colors"
@@ -246,7 +246,7 @@ export default function CategoriesPage() {
               <tr>
                 <td colSpan={5} className="px-6 py-8 text-center">
                   <div className="text-kwatch-text-muted">
-                    등록된 카테고리가 없습니다.
+                    등록된 분류가 없습니다.
                   </div>
                 </td>
               </tr>
@@ -295,7 +295,7 @@ export default function CategoriesPage() {
           <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary w-full max-w-md">
             <div className="p-6 border-b border-kwatch-bg-tertiary flex items-center justify-between">
               <h2 className="text-2xl font-bold">
-                {editingCategory ? '카테고리 수정' : '카테고리 추가'}
+                {editingCategory ? '분류 수정' : '분류 추가'}
               </h2>
               <button
                 onClick={closeModal}
@@ -329,7 +329,7 @@ export default function CategoriesPage() {
 
               <div>
                 <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
-                  카테고리명 <span className="text-kwatch-status-critical">*</span>
+                  분류명 <span className="text-kwatch-status-critical">*</span>
                 </label>
                 <input
                   type="text"
@@ -355,7 +355,7 @@ export default function CategoriesPage() {
                   }
                   disabled={isSubmitting}
                   className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
-                  placeholder="카테고리 설명"
+                  placeholder="분류 설명"
                   rows={3}
                 />
               </div>

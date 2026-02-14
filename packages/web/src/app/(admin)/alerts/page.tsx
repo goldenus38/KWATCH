@@ -226,7 +226,10 @@ export default function AlertsPage() {
                 시간
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                웹사이트
+                기관명
+              </th>
+              <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
+                사이트명
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
                 유형
@@ -238,20 +241,20 @@ export default function AlertsPage() {
                 메시지
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                액션
+                관리
               </th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-6 py-8 text-center">
+                <td colSpan={7} className="px-6 py-8 text-center">
                   <div className="text-kwatch-text-muted">로딩 중...</div>
                 </td>
               </tr>
             ) : alerts.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-8 text-center">
+                <td colSpan={7} className="px-6 py-8 text-center">
                   <div className="text-kwatch-text-muted">알림이 없습니다.</div>
                 </td>
               </tr>
@@ -266,8 +269,11 @@ export default function AlertsPage() {
                   <td className="px-6 py-3 text-sm text-kwatch-text-secondary whitespace-nowrap">
                     {formatDate(alert.createdAt)}
                   </td>
+                  <td className="px-6 py-3 text-sm text-kwatch-text-secondary max-w-[150px] truncate">
+                    {alert.organizationName || '-'}
+                  </td>
                   <td className="px-6 py-3 text-sm font-medium text-kwatch-text-primary max-w-xs truncate">
-                    {alert.websiteName || '알 수 없음'}
+                    {alert.websiteName || '-'}
                   </td>
                   <td className="px-6 py-3 text-sm">
                     {getAlertTypeLabel(alert.alertType)}

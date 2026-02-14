@@ -41,9 +41,14 @@ coverage/
 # Prisma (migrations are version-controlled for prisma migrate deploy)
 
 # Screenshots (large files)
-packages/server/screenshots/current/
-packages/server/screenshots/diffs/
+packages/server/screenshots/
 # Keep baselines in version control if needed
+
+# Project documents & assets
+*.xlsx
+ICON/
+use_gpu.md
+수정요구사항_v1.0.md
 
 # Docker
 docker-compose.override.yml

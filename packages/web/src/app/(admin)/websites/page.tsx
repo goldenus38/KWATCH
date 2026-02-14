@@ -206,8 +206,8 @@ export default function WebsitesPage() {
 
   const handleAddWebsite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.url.trim() || !formData.name.trim()) {
-      setError('URL과 웹사이트명은 필수입니다.');
+    if (!formData.categoryId || !formData.organizationName.trim() || !formData.name.trim() || !formData.url.trim()) {
+      setError('분류, 기관명, 사이트명, URL은 필수입니다.');
       return;
     }
     if (!isValidHttpUrl(formData.url.trim())) {
@@ -252,8 +252,8 @@ export default function WebsitesPage() {
   // 웹사이트 수정
   const handleEditWebsite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingWebsite || !formData.url.trim() || !formData.name.trim()) {
-      setError('URL과 웹사이트명은 필수입니다.');
+    if (!editingWebsite || !formData.categoryId || !formData.organizationName.trim() || !formData.name.trim() || !formData.url.trim()) {
+      setError('분류, 기관명, 사이트명, URL은 필수입니다.');
       return;
     }
     if (!isValidHttpUrl(formData.url.trim())) {
@@ -590,7 +590,7 @@ export default function WebsitesPage() {
       <div className="flex gap-4 flex-wrap">
         <input
           type="text"
-          placeholder="웹사이트 검색..."
+          placeholder="기관명, 사이트명, URL 검색..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="flex-1 min-w-[200px] px-4 py-2 bg-kwatch-bg-secondary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
@@ -600,7 +600,7 @@ export default function WebsitesPage() {
           onChange={(e) => setSelectedCategory(e.target.value)}
           className="px-4 py-2 bg-kwatch-bg-secondary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
         >
-          <option value="">모든 카테고리</option>
+          <option value="">모든 분류</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id.toString()}>
               {category.name}
@@ -622,7 +622,7 @@ export default function WebsitesPage() {
           <thead className="border-b border-kwatch-bg-tertiary bg-kwatch-bg-tertiary">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary cursor-pointer select-none hover:text-kwatch-accent transition-colors" onClick={() => handleSort('category')}>
-                카테고리<SortIcon columnKey="category" />
+                분류<SortIcon columnKey="category" />
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary cursor-pointer select-none hover:text-kwatch-accent transition-colors" onClick={() => handleSort('organizationName')}>
                 기관명<SortIcon columnKey="organizationName" />
@@ -634,13 +634,13 @@ export default function WebsitesPage() {
                 URL<SortIcon columnKey="url" />
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary cursor-pointer select-none hover:text-kwatch-accent transition-colors" onClick={() => handleSort('checkIntervalSeconds')}>
-                점검주기(초)<SortIcon columnKey="checkIntervalSeconds" />
+                점검주기<SortIcon columnKey="checkIntervalSeconds" />
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary cursor-pointer select-none hover:text-kwatch-accent transition-colors" onClick={() => handleSort('isActive')}>
                 상태<SortIcon columnKey="isActive" />
               </th>
               <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                액션
+                관리
               </th>
             </tr>
           </thead>
@@ -676,26 +676,34 @@ export default function WebsitesPage() {
                   <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
                     {website.checkIntervalSeconds}
                   </td>
-                  <td className="px-6 py-3 text-sm">
+                  <td className="px-6 py-3 text-sm whitespace-nowrap">
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(website.isActive)}`}
                     >
                       {getStatusLabel(website.isActive)}
                     </span>
                   </td>
-                  <td className="px-6 py-3 text-sm space-x-2">
-                    <button
-                      onClick={() => openEditModal(website)}
-                      className="text-kwatch-accent hover:text-kwatch-accent-hover transition-colors"
-                    >
-                      수정
-                    </button>
-                    <button
-                      onClick={() => handleDeleteWebsite(website.id)}
-                      className="text-kwatch-status-critical hover:opacity-80 transition-opacity"
-                    >
-                      삭제
-                    </button>
+                  <td className="px-6 py-3 text-sm whitespace-nowrap">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEditModal(website)}
+                        className="p-1.5 rounded hover:bg-kwatch-bg-tertiary text-kwatch-accent hover:text-kwatch-accent-hover transition-colors"
+                        title="수정"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteWebsite(website.id)}
+                        className="p-1.5 rounded hover:bg-kwatch-bg-tertiary text-kwatch-status-critical hover:opacity-80 transition-colors"
+                        title="삭제"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -773,41 +781,29 @@ export default function WebsitesPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
-                    URL <span className="text-kwatch-status-critical">*</span>
+                    분류 <span className="text-kwatch-status-critical">*</span>
                   </label>
-                  <input
-                    type="url"
-                    value={formData.url}
+                  <select
+                    value={formData.categoryId}
                     onChange={(e) =>
-                      setFormData({ ...formData, url: e.target.value })
+                      setFormData({ ...formData, categoryId: e.target.value })
                     }
                     disabled={isSubmitting}
-                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
-                    placeholder="https://example.com"
+                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
                     required
-                  />
+                  >
+                    <option value="">분류 선택</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id.toString()}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
-                    웹사이트명 <span className="text-kwatch-status-critical">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    disabled={isSubmitting}
-                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
-                    placeholder="웹사이트명"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
-                    기관명
+                    기관명 <span className="text-kwatch-status-critical">*</span>
                   </label>
                   <input
                     type="text"
@@ -821,28 +817,42 @@ export default function WebsitesPage() {
                     disabled={isSubmitting}
                     className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
                     placeholder="기관명"
+                    required
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
-                    카테고리
+                    사이트명 <span className="text-kwatch-status-critical">*</span>
                   </label>
-                  <select
-                    value={formData.categoryId}
+                  <input
+                    type="text"
+                    value={formData.name}
                     onChange={(e) =>
-                      setFormData({ ...formData, categoryId: e.target.value })
+                      setFormData({ ...formData, name: e.target.value })
                     }
                     disabled={isSubmitting}
-                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
-                  >
-                    <option value="">카테고리 선택</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id.toString()}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
+                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                    placeholder="사이트명"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-kwatch-text-primary mb-1">
+                    URL <span className="text-kwatch-status-critical">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.url}
+                    onChange={(e) =>
+                      setFormData({ ...formData, url: e.target.value })
+                    }
+                    disabled={isSubmitting}
+                    className="w-full px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary placeholder-kwatch-text-muted focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                    placeholder="https://example.com"
+                    required
+                  />
                 </div>
 
                 <div>
