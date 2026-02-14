@@ -29,7 +29,7 @@ interface UseMonitoringDataReturn {
 let cachedSummary: DashboardSummary | null = null;
 let cachedStatuses: MonitoringStatus[] = [];
 let cachedAlerts: Alert[] = [];
-let cachedResponseTimeWarningMs = 10000;
+let cachedResponseTimeWarningMs = 100000;
 
 /**
  * 모니터링 데이터 구독 훅

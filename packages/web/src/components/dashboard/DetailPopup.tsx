@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ComposedChart,
@@ -107,6 +107,30 @@ export function DetailPopup({
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
   const [cacheBuster, setCacheBuster] = useState(0);
 
+  // Timer refs for cleanup on unmount
+  const screenshotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const screenshotPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baselineTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const baselinePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const defacementTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const defacementPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const httpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const httpPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
+      if (screenshotPollRef.current) clearTimeout(screenshotPollRef.current);
+      if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
+      if (baselinePollRef.current) clearTimeout(baselinePollRef.current);
+      if (defacementTimerRef.current) clearInterval(defacementTimerRef.current);
+      if (defacementPollRef.current) clearTimeout(defacementPollRef.current);
+      if (httpTimerRef.current) clearInterval(httpTimerRef.current);
+      if (httpPollRef.current) clearTimeout(httpPollRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (!websiteId) return;
 
@@ -170,7 +194,7 @@ export function DetailPopup({
     }
 
     // 경과 시간 카운터
-    const timer = setInterval(() => {
+    screenshotTimerRef.current = setInterval(() => {
       setScreenshotElapsed((prev) => prev + 1);
     }, 1000);
 
@@ -187,7 +211,7 @@ export function DetailPopup({
       }
 
       if (newScreenshotUrl && newScreenshotUrl !== prevScreenshotUrl) {
-        clearInterval(timer);
+        if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
         const results = await Promise.allSettled([
           api.get<MonitoringResult[]>(`/api/monitoring/${websiteId}?limit=48`),
           api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`),
@@ -210,16 +234,16 @@ export function DetailPopup({
       }
 
       if (attempts < maxAttempts) {
-        setTimeout(poll, 3000);
+        screenshotPollRef.current = setTimeout(poll, 3000);
       } else {
-        clearInterval(timer);
+        if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
         setCacheBuster(Date.now());
         setIsScreenshotRefreshing(false);
         setScreenshotElapsed(0);
       }
     };
 
-    setTimeout(poll, 5000);
+    screenshotPollRef.current = setTimeout(poll, 5000);
   };
 
   /**
@@ -241,7 +265,7 @@ export function DetailPopup({
     setIsBaselineRefreshing(true);
     setBaselineElapsed(0);
 
-    const timer = setInterval(() => {
+    baselineTimerRef.current = setInterval(() => {
       setBaselineElapsed((prev) => prev + 1);
     }, 1000);
 
@@ -264,7 +288,7 @@ export function DetailPopup({
 
         if (defacementRes.success && defacementRes.data) {
           if (defacementRes.data.checkedAt && defacementRes.data.checkedAt !== prevCheckedAt) {
-            clearInterval(timer);
+            if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
             setLatestDefacement(defacementRes.data);
             const monRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
             if (monRes.success && monRes.data) setLocalStatus(monRes.data);
@@ -276,7 +300,7 @@ export function DetailPopup({
         }
 
         if (attempts < maxAttempts) {
-          setTimeout(poll, 3000);
+          baselinePollRef.current = setTimeout(poll, 3000);
         } else {
           // 타임아웃 — 최소한 베이스라인 갱신은 완료됨, 최신 데이터 반영
           if (defacementRes.success && defacementRes.data) {
@@ -284,17 +308,17 @@ export function DetailPopup({
           }
           const monRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
           if (monRes.success && monRes.data) setLocalStatus(monRes.data);
-          clearInterval(timer);
+          if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
           setCacheBuster(Date.now());
           setIsBaselineRefreshing(false);
           setBaselineElapsed(0);
         }
       };
 
-      setTimeout(poll, 3000);
+      baselinePollRef.current = setTimeout(poll, 3000);
     } catch (e) {
       console.error('[DetailPopup] Baseline refresh failed:', e);
-      clearInterval(timer);
+      if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
       setIsBaselineRefreshing(false);
       setBaselineElapsed(0);
     }
@@ -319,7 +343,7 @@ export function DetailPopup({
       return;
     }
 
-    const timer = setInterval(() => {
+    defacementTimerRef.current = setInterval(() => {
       setDefacementElapsed((prev) => prev + 1);
     }, 1000);
 
@@ -332,7 +356,7 @@ export function DetailPopup({
 
       if (defacementRes.success && defacementRes.data) {
         if (defacementRes.data.checkedAt && defacementRes.data.checkedAt !== prevCheckedAt) {
-          clearInterval(timer);
+          if (defacementTimerRef.current) clearInterval(defacementTimerRef.current);
           setLatestDefacement(defacementRes.data);
           setCacheBuster(Date.now());
           setIsDefacementRechecking(false);
@@ -342,15 +366,15 @@ export function DetailPopup({
       }
 
       if (attempts < maxAttempts) {
-        setTimeout(poll, 3000);
+        defacementPollRef.current = setTimeout(poll, 3000);
       } else {
-        clearInterval(timer);
+        if (defacementTimerRef.current) clearInterval(defacementTimerRef.current);
         setIsDefacementRechecking(false);
         setDefacementElapsed(0);
       }
     };
 
-    setTimeout(poll, 3000);
+    defacementPollRef.current = setTimeout(poll, 3000);
   };
 
   /**
@@ -383,7 +407,7 @@ export function DetailPopup({
       return;
     }
 
-    const timer = setInterval(() => {
+    httpTimerRef.current = setInterval(() => {
       setHttpElapsed((prev) => prev + 1);
     }, 1000);
 
@@ -397,7 +421,7 @@ export function DetailPopup({
       if (statusRes.success && statusRes.data) {
         const newCheckedAt = statusRes.data.checkedAt;
         if (newCheckedAt && String(newCheckedAt) !== String(prevCheckedAt)) {
-          clearInterval(timer);
+          if (httpTimerRef.current) clearInterval(httpTimerRef.current);
           setLocalStatus(statusRes.data);
           await refreshChartData();
           setIsHttpRefreshing(false);
@@ -407,9 +431,9 @@ export function DetailPopup({
       }
 
       if (attempts < maxAttempts) {
-        setTimeout(poll, 3000);
+        httpPollRef.current = setTimeout(poll, 3000);
       } else {
-        clearInterval(timer);
+        if (httpTimerRef.current) clearInterval(httpTimerRef.current);
         if (statusRes.success && statusRes.data) {
           setLocalStatus(statusRes.data);
         }
@@ -419,7 +443,7 @@ export function DetailPopup({
       }
     };
 
-    setTimeout(poll, 3000);
+    httpPollRef.current = setTimeout(poll, 3000);
   };
 
   if (!websiteId) return null;

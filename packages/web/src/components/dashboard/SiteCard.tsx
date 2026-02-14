@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MonitoringStatus, WebsiteStatus } from '@/types';
 import { formatResponseTime, cn, truncate } from '@/lib/utils';
 import { STATUS_COLORS, API_BASE_URL } from '@/lib/constants';
@@ -18,6 +18,12 @@ interface SiteCardProps {
  */
 export const SiteCard = React.memo(function SiteCard({ data, onClick, responseTimeWarningMs = 10000 }: SiteCardProps) {
   const [imgError, setImgError] = useState(false);
+  const imgSrc = data.thumbnailUrl || data.screenshotUrl;
+
+  useEffect(() => {
+    setImgError(false);
+  }, [imgSrc]);
+
   const status: WebsiteStatus = (() => {
     if (!data.isUp) return 'critical';
     if (data.defacementStatus?.isDefaced) return 'critical';

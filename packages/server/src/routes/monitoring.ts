@@ -53,8 +53,8 @@ router.get('/:websiteId', async (req, res) => {
     const { page = 1, limit = 50 } = req.query as any;
 
     const siteId = parseInt(websiteId);
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 50;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(200, parseInt(limit) || 50));
 
     if (isNaN(siteId)) {
       sendError(res, 'INVALID_ID', '유효하지 않은 웹사이트 ID입니다.', 400);
@@ -64,7 +64,7 @@ router.get('/:websiteId', async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
     const [results, totalCount] = await Promise.all([
       monitoringService.getHistory(siteId, limitNum, offset),
-      monitoringService['prisma'].monitoringResult.count({ where: { websiteId: siteId } }),
+      monitoringService.getHistoryCount(siteId),
     ]);
 
     const meta = createPaginationMeta(totalCount, pageNum, limitNum);

@@ -76,7 +76,11 @@ export class MonitoringService {
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get('location');
         if (!location) break;
-        currentUrl = new URL(location, currentUrl).href;
+        try {
+          currentUrl = new URL(location, currentUrl).href;
+        } catch {
+          break; // 잘못된 Location 헤더 — 리다이렉트 중단
+        }
         redirectCount++;
         continue;
       }
@@ -113,40 +117,14 @@ export class MonitoringService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
-      // HEAD 요청 + 수동 리다이렉트 추적
-      let { response, finalUrl, redirectCount } = await this.fetchWithManualRedirect(
-        url, 'HEAD', controller,
-      );
-
-      // 리다이렉트 횟수 초과
-      if (redirectCount > MonitoringService.MAX_REDIRECTS) {
-        clearTimeout(timeoutId);
-        return {
-          statusCode: null,
-          responseTimeMs: Date.now() - startTime,
-          isUp: false,
-          errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
-          finalUrl,
-        };
-      }
-
-      // HEAD 4xx → GET fallback (많은 서버가 HEAD를 차단)
-      if (response.status >= 400) {
-        const fallbackController = new AbortController();
-        const fallbackTimeoutId = setTimeout(
-          () => fallbackController.abort(),
-          timeoutSeconds * 1000,
+      try {
+        // HEAD 요청 + 수동 리다이렉트 추적
+        let { response, finalUrl, redirectCount } = await this.fetchWithManualRedirect(
+          url, 'HEAD', controller,
         );
 
-        const getResult = await this.fetchWithManualRedirect(
-          url, 'GET', fallbackController,
-        );
-        response = getResult.response;
-        finalUrl = getResult.finalUrl;
-
-        if (getResult.redirectCount > MonitoringService.MAX_REDIRECTS) {
-          clearTimeout(timeoutId);
-          clearTimeout(fallbackTimeoutId);
+        // 리다이렉트 횟수 초과
+        if (redirectCount > MonitoringService.MAX_REDIRECTS) {
           return {
             statusCode: null,
             responseTimeMs: Date.now() - startTime,
@@ -156,22 +134,49 @@ export class MonitoringService {
           };
         }
 
-        clearTimeout(fallbackTimeoutId);
+        // HEAD 4xx → GET fallback (많은 서버가 HEAD를 차단)
+        if (response.status >= 400) {
+          const fallbackController = new AbortController();
+          const fallbackTimeoutId = setTimeout(
+            () => fallbackController.abort(),
+            timeoutSeconds * 1000,
+          );
+
+          try {
+            const getResult = await this.fetchWithManualRedirect(
+              url, 'GET', fallbackController,
+            );
+            response = getResult.response;
+            finalUrl = getResult.finalUrl;
+
+            if (getResult.redirectCount > MonitoringService.MAX_REDIRECTS) {
+              return {
+                statusCode: null,
+                responseTimeMs: Date.now() - startTime,
+                isUp: false,
+                errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
+                finalUrl,
+              };
+            }
+          } finally {
+            clearTimeout(fallbackTimeoutId);
+          }
+        }
+
+        const responseTimeMs = Date.now() - startTime;
+        // 서버가 응답하면 정상 (4xx도 서버 작동 중), 5xx만 장애로 판정
+        const isUp = response.status < 500;
+
+        return {
+          statusCode: response.status,
+          responseTimeMs,
+          isUp,
+          errorMessage: null,
+          finalUrl,
+        };
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      clearTimeout(timeoutId);
-
-      const responseTimeMs = Date.now() - startTime;
-      // 서버가 응답하면 정상 (4xx도 서버 작동 중), 5xx만 장애로 판정
-      const isUp = response.status < 500;
-
-      return {
-        statusCode: response.status,
-        responseTimeMs,
-        isUp,
-        errorMessage: null,
-        finalUrl,
-      };
     } catch (error: unknown) {
       const responseTimeMs = Date.now() - startTime;
 
@@ -504,6 +509,13 @@ export class MonitoringService {
    * @param offset 오프셋
    * @returns MonitoringResult 배열
    */
+  /**
+   * 웹사이트의 모니터링 이력 총 개수를 조회합니다
+   */
+  async getHistoryCount(websiteId: number): Promise<number> {
+    return this.prisma.monitoringResult.count({ where: { websiteId } });
+  }
+
   async getHistory(
     websiteId: number,
     limit: number = 100,
