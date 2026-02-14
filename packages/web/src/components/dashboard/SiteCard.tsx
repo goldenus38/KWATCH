@@ -38,11 +38,11 @@ export const SiteCard = React.memo(function SiteCard({ data, onClick, responseTi
         status === 'normal' && 'border-kwatch-bg-tertiary',
       )}
     >
-      {/* 스크린샷 영역 - 카드 높이의 대부분 차지 */}
+      {/* 스크린샷 영역 - 카드 높이의 대부분 차지 (썸네일 우선, fallback: 원본) */}
       <div className="relative flex-1 bg-black overflow-hidden min-h-0">
-        {data.screenshotUrl && !imgError ? (
+        {(data.thumbnailUrl || data.screenshotUrl) && !imgError ? (
           <img
-            src={`${API_BASE_URL}${data.screenshotUrl}`}
+            src={`${API_BASE_URL}${data.thumbnailUrl || data.screenshotUrl}`}
             alt={data.websiteName}
             className="w-full h-full object-cover"
             loading="lazy"

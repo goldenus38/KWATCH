@@ -244,7 +244,7 @@ router.post('/monitoring/persist', authenticate, authorize('admin'), async (req,
     const existingKeys = new Set<string>();
 
     const updatedLines = lines.map((line) => {
-      const match = line.match(/^([A-Z_]+)=/);
+      const match = line.match(/^([A-Z0-9_]+)=/);
       if (match && updates[match[1]] !== undefined) {
         existingKeys.add(match[1]);
         return `${match[1]}=${updates[match[1]]}`;
@@ -377,7 +377,7 @@ router.post('/defacement/persist', authenticate, authorize('admin'), async (req,
 
     // 기존 키 값 업데이트
     const updatedLines = lines.map((line) => {
-      const match = line.match(/^([A-Z_]+)=/);
+      const match = line.match(/^([A-Z0-9_]+)=/);
       if (match && updates[match[1]] !== undefined) {
         existingKeys.add(match[1]);
         return `${match[1]}=${updates[match[1]]}`;

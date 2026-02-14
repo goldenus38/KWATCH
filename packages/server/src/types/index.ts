@@ -102,6 +102,7 @@ export interface MonitoringStatus {
   errorMessage: string | null;
   checkedAt: Date;
   screenshotUrl: string | null;
+  thumbnailUrl: string | null;
   defacementStatus: {
     isDefaced: boolean;
     similarityScore: number | null;

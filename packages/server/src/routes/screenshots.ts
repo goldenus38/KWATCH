@@ -73,6 +73,32 @@ router.get('/:websiteId/latest', async (req, res) => {
 });
 
 /**
+ * GET /api/screenshots/thumbnail/:id
+ * 스크린샷 썸네일 이미지 반환 (400x225, JPEG)
+ * 썸네일 파일이 없으면 원본에서 실시간 생성
+ */
+router.get('/thumbnail/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const screenshotId = parseInt(id);
+
+    if (isNaN(screenshotId)) {
+      sendError(res, 'INVALID_ID', '유효하지 않은 스크린샷 ID입니다.', 400);
+      return;
+    }
+
+    const { buffer, contentType } = await screenshotService.getThumbnailBuffer(BigInt(screenshotId));
+
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.send(buffer);
+  } catch (error) {
+    sendError(res, 'FILE_ERROR', '썸네일 파일 조회 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
  * GET /api/screenshots/image/:id
  * 스크린샷 이미지 파일 반환
  */

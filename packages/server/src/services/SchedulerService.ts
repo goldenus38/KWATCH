@@ -1,4 +1,4 @@
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents, Worker } from 'bullmq';
 import { getRedisClient } from '../config/redis';
 import { getDbClient } from '../config/database';
 import { config } from '../config';
@@ -20,6 +20,8 @@ export class SchedulerService {
   private monitoringQueue: Queue<MonitoringJobData> | null = null;
   private screenshotQueue: Queue<ScreenshotJobData> | null = null;
   private defacementQueue: Queue<DefacementJobData> | null = null;
+  private cleanupQueue: Queue | null = null;
+  private cleanupWorker: Worker | null = null;
 
   constructor() {
     // TODO: 큐 초기화 및 워커 설정
@@ -49,10 +51,24 @@ export class SchedulerService {
         connection: this.redis as any,
       });
 
+      this.cleanupQueue = new Queue('cleanup-queue', {
+        connection: this.redis as any,
+      });
+
+      // 매일 새벽 3시에 정리 작업 실행
+      await this.cleanupQueue.add('daily-cleanup', {}, {
+        repeat: { pattern: '0 3 * * *' },
+        removeOnComplete: true,
+        removeOnFail: false,
+      });
+
+      // 정리 작업 워커 초기화
+      this.initCleanupWorker();
+
       // TODO: 이벤트 리스너 설정
       this.setupEventListeners();
 
-      logger.info('Bull Queues initialized');
+      logger.info('Bull Queues initialized (including daily cleanup)');
     } catch (error) {
       logger.error('initQueues failed:', error);
       throw error;
@@ -78,6 +94,53 @@ export class SchedulerService {
         logger.warn(`${name} job failed: ${jobId} - ${failedReason}`);
       });
     }
+  }
+
+  /**
+   * 데이터 정리 워커를 초기화합니다
+   * 스크린샷(7일), 모니터링 결과(90일), 위변조 체크(90일), 알림(180일) 자동 정리
+   */
+  private initCleanupWorker(): void {
+    this.cleanupWorker = new Worker(
+      'cleanup-queue',
+      async () => {
+        logger.info('[Cleanup] Daily cleanup started');
+
+        try {
+          // 지연 import로 순환 참조 방지
+          const { screenshotService } = await import('./ScreenshotService');
+          const { monitoringService } = await import('./MonitoringService');
+          const { alertService } = await import('./AlertService');
+
+          const [screenshots, results, defacement, alerts] = await Promise.allSettled([
+            screenshotService.cleanupOldScreenshots(7),
+            monitoringService.cleanupOldResults(90),
+            monitoringService.cleanupOldDefacementChecks(90),
+            alertService.cleanupOldAlerts(180),
+          ]);
+
+          const summary = {
+            screenshots: screenshots.status === 'fulfilled' ? screenshots.value : `error: ${(screenshots as PromiseRejectedResult).reason}`,
+            monitoringResults: results.status === 'fulfilled' ? results.value : `error: ${(results as PromiseRejectedResult).reason}`,
+            defacementChecks: defacement.status === 'fulfilled' ? defacement.value : `error: ${(defacement as PromiseRejectedResult).reason}`,
+            alerts: alerts.status === 'fulfilled' ? alerts.value : `error: ${(alerts as PromiseRejectedResult).reason}`,
+          };
+
+          logger.info('[Cleanup] Daily cleanup completed:', summary);
+        } catch (error) {
+          logger.error('[Cleanup] Daily cleanup failed:', error);
+          throw error;
+        }
+      },
+      {
+        connection: this.redis as any,
+        concurrency: 1,
+      },
+    );
+
+    this.cleanupWorker.on('failed', (job, err) => {
+      logger.error(`[Cleanup] Job ${job?.id} failed:`, err);
+    });
   }
 
   /**
@@ -246,7 +309,7 @@ export class SchedulerService {
         // repeatable job 제거
         const repeatableJobs = await queue.getRepeatableJobs();
         for (const job of repeatableJobs) {
-          if (job.key.includes(`${websiteId}`)) {
+          if (job.key.includes(`:${websiteId}:`) || job.key.endsWith(`:${websiteId}`)) {
             await queue.removeRepeatableByKey(job.key);
           }
         }
@@ -433,6 +496,12 @@ export class SchedulerService {
       }
       if (this.defacementQueue) {
         await this.defacementQueue.close();
+      }
+      if (this.cleanupWorker) {
+        await this.cleanupWorker.close();
+      }
+      if (this.cleanupQueue) {
+        await this.cleanupQueue.close();
       }
 
       logger.info('Scheduler cleanup completed');

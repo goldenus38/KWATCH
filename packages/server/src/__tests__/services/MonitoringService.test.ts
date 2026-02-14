@@ -163,10 +163,12 @@ describe('MonitoringService', () => {
       expect(statuses[0].isUp).toBe(true);
       expect(statuses[0].finalUrl).toBe('https://a.com/');
       expect(statuses[0].screenshotUrl).toBe('/api/screenshots/image/10');
+      expect(statuses[0].thumbnailUrl).toBe('/api/screenshots/thumbnail/10');
       expect(statuses[1].isUp).toBe(false);
       expect(statuses[1].organizationName).toBeNull();
       expect(statuses[1].finalUrl).toBeNull();
       expect(statuses[1].screenshotUrl).toBeNull();
+      expect(statuses[1].thumbnailUrl).toBeNull();
     });
   });
 });

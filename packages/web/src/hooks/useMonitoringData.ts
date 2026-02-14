@@ -68,7 +68,7 @@ export function useMonitoringData(
       if (summaryRes.success && summaryRes.data) {
         setSummary(summaryRes.data);
         cachedSummary = summaryRes.data;
-        if (summaryRes.data.responseTimeWarningMs) {
+        if (summaryRes.data.responseTimeWarningMs != null) {
           setResponseTimeWarningMs(summaryRes.data.responseTimeWarningMs);
           cachedResponseTimeWarningMs = summaryRes.data.responseTimeWarningMs;
         }
@@ -154,7 +154,7 @@ export function useMonitoringData(
       setStatuses((prev) => {
         const updated = prev.map((s) =>
           s.websiteId === data.websiteId
-            ? { ...s, screenshotUrl: data.screenshotUrl }
+            ? { ...s, screenshotUrl: data.screenshotUrl, thumbnailUrl: data.thumbnailUrl }
             : s,
         );
         cachedStatuses = updated;

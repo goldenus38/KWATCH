@@ -159,8 +159,9 @@ export function emitDefacementDetected(detection: WsDefacementDetected): void {
  * 스크린샷 업데이트를 브로드캐스트합니다
  * @param websiteId 웹사이트 ID
  * @param screenshotUrl 스크린샷 URL
+ * @param thumbnailUrl 썸네일 URL
  */
-export function emitScreenshotUpdate(websiteId: number, screenshotUrl: string): void {
+export function emitScreenshotUpdate(websiteId: number, screenshotUrl: string, thumbnailUrl?: string): void {
   if (!io) {
     logger.warn('[SocketIO] Socket.IO not initialized, screenshot update skipped');
     return;
@@ -170,6 +171,7 @@ export function emitScreenshotUpdate(websiteId: number, screenshotUrl: string): 
     io.of('/dashboard').to('dashboard-room').emit('screenshot:updated', {
       websiteId,
       screenshotUrl,
+      thumbnailUrl: thumbnailUrl || screenshotUrl.replace('/image/', '/thumbnail/'),
       timestamp: new Date(),
     });
 

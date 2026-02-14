@@ -112,6 +112,7 @@ export interface MonitoringStatus {
   errorMessage: string | null;
   checkedAt: string;
   screenshotUrl: string | null;
+  thumbnailUrl: string | null;
   defacementStatus: {
     isDefaced: boolean;
     similarityScore: number | null;
@@ -271,4 +272,5 @@ export interface WsDefacementDetected {
 export interface WsScreenshotUpdated {
   websiteId: number;
   screenshotUrl: string;
+  thumbnailUrl: string;
 }

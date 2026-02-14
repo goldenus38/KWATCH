@@ -514,7 +514,7 @@ export function DetailPopup({
                               <div className="bg-kwatch-bg-secondary border border-kwatch-bg-tertiary rounded-lg px-3 py-2">
                                 <div className="text-kwatch-text-secondary text-xs mb-1">{label}</div>
                                 <div className="text-kwatch-text-primary text-sm">
-                                  응답 시간: <span className="font-semibold text-kwatch-accent">{data?.responseTime?.toLocaleString()}ms</span>
+                                  응답 시간: <span className="font-semibold text-kwatch-accent">{data?.responseTime != null ? data.responseTime.toLocaleString() : '-'}ms</span>
                                 </div>
                                 <div className="text-sm" style={{ color: statusColor }}>
                                   HTTP: <span className="font-semibold">{statusCode ?? 'ERR'}</span>

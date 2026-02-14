@@ -434,12 +434,12 @@ export class ScreenshotService {
     try {
       await fs.mkdir(this.thumbnailDir, { recursive: true });
 
-      const thumbFilename = `${websiteId}_${timestamp}_thumb.png`;
+      const thumbFilename = `${websiteId}_${timestamp}_thumb.jpg`;
       const thumbPath = path.join(this.thumbnailDir, thumbFilename);
 
       await sharp(imagePath)
         .resize(400, 225, { fit: 'cover', position: 'center' })
-        .png()
+        .jpeg({ quality: 80 })
         .toFile(thumbPath);
 
       logger.debug(`Thumbnail generated for website ${websiteId}: ${thumbPath}`);
@@ -520,9 +520,10 @@ export class ScreenshotService {
       for (const screenshot of oldScreenshots) {
         try {
           await fs.unlink(screenshot.filePath);
-          const thumbFilename = path.basename(screenshot.filePath).replace('.png', '_thumb.png');
-          const thumbPath = path.join(this.thumbnailDir, thumbFilename);
-          await fs.unlink(thumbPath).catch(() => {}); // 썸네일이 없을 수도 있음
+          const basename = path.basename(screenshot.filePath, '.png');
+          // JPG/PNG 썸네일 모두 정리
+          await fs.unlink(path.join(this.thumbnailDir, `${basename}_thumb.jpg`)).catch(() => {});
+          await fs.unlink(path.join(this.thumbnailDir, `${basename}_thumb.png`)).catch(() => {});
           deletedCount++;
         } catch (error) {
           logger.warn(`Failed to delete screenshot file: ${screenshot.filePath}`, error);
@@ -542,6 +543,58 @@ export class ScreenshotService {
       return deletedCount;
     } catch (error) {
       logger.error('cleanupOldScreenshots failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 스크린샷의 썸네일 Buffer를 반환합니다
+   * 기존 썸네일 파일(JPG/PNG)이 있으면 반환, 없으면 원본에서 실시간 생성
+   * @param screenshotId 스크린샷 ID
+   * @returns { buffer, contentType }
+   */
+  async getThumbnailBuffer(screenshotId: bigint): Promise<{ buffer: Buffer; contentType: string }> {
+    try {
+      const screenshot = await this.prisma.screenshot.findUnique({
+        where: { id: screenshotId },
+      });
+
+      if (!screenshot) {
+        throw new Error(`Screenshot not found: ${screenshotId}`);
+      }
+
+      // 썸네일 파일명 추출 (원본: {id}_{ts}.png → 썸네일: {id}_{ts}_thumb.jpg)
+      const basename = path.basename(screenshot.filePath, '.png');
+      const jpgThumbPath = path.join(this.thumbnailDir, `${basename}_thumb.jpg`);
+      const pngThumbPath = path.join(this.thumbnailDir, `${basename}_thumb.png`);
+
+      // JPG 썸네일 우선, 없으면 PNG fallback
+      for (const thumbPath of [jpgThumbPath, pngThumbPath]) {
+        try {
+          const buffer = await fs.readFile(thumbPath);
+          const contentType = thumbPath.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
+          return { buffer, contentType };
+        } catch {
+          // 파일 없음 — 다음 시도
+        }
+      }
+
+      // 썸네일 파일 없음 — 원본에서 실시간 생성
+      const originalBuffer = await fs.readFile(screenshot.filePath);
+      const thumbBuffer = await sharp(originalBuffer)
+        .resize(400, 225, { fit: 'cover', position: 'center' })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+
+      // 비동기로 파일 저장 (다음 요청에서 캐시 활용)
+      await fs.mkdir(this.thumbnailDir, { recursive: true });
+      fs.writeFile(jpgThumbPath, thumbBuffer).catch((err) => {
+        logger.warn(`Failed to cache thumbnail: ${jpgThumbPath}`, err);
+      });
+
+      return { buffer: thumbBuffer, contentType: 'image/jpeg' };
+    } catch (error) {
+      logger.error(`getThumbnailBuffer failed for screenshot ${screenshotId}:`, error);
       throw error;
     }
   }

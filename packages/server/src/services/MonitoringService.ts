@@ -191,6 +191,7 @@ export class MonitoringService {
         errorMessage: latestResult?.errorMessage ?? null,
         checkedAt: latestResult?.checkedAt ?? new Date(),
         screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
+        thumbnailUrl: latestScreenshot ? `/api/screenshots/thumbnail/${latestScreenshot.id}` : null,
         defacementStatus: latestDefacement
           ? {
               isDefaced,
@@ -266,6 +267,7 @@ export class MonitoringService {
           errorMessage: latestResult?.errorMessage ?? null,
           checkedAt: latestResult?.checkedAt ?? new Date(),
           screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
+          thumbnailUrl: latestScreenshot ? `/api/screenshots/thumbnail/${latestScreenshot.id}` : null,
           defacementStatus: latestDefacement
             ? {
                 isDefaced,
@@ -365,6 +367,60 @@ export class MonitoringService {
       return summary;
     } catch (error) {
       logger.error('getDashboardSummary failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 오래된 모니터링 결과를 정리합니다
+   * @param daysToKeep 보관할 일 수 (기본 90일)
+   * @returns 삭제된 레코드 수
+   */
+  async cleanupOldResults(daysToKeep: number = 90): Promise<number> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+      const result = await this.prisma.monitoringResult.deleteMany({
+        where: {
+          checkedAt: { lt: cutoffDate },
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Cleaned up ${result.count} old monitoring results (older than ${daysToKeep} days)`);
+      }
+
+      return result.count;
+    } catch (error) {
+      logger.error('cleanupOldResults failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 오래된 위변조 체크 결과를 정리합니다
+   * @param daysToKeep 보관할 일 수 (기본 90일)
+   * @returns 삭제된 레코드 수
+   */
+  async cleanupOldDefacementChecks(daysToKeep: number = 90): Promise<number> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+      const result = await this.prisma.defacementCheck.deleteMany({
+        where: {
+          checkedAt: { lt: cutoffDate },
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Cleaned up ${result.count} old defacement checks (older than ${daysToKeep} days)`);
+      }
+
+      return result.count;
+    } catch (error) {
+      logger.error('cleanupOldDefacementChecks failed:', error);
       throw error;
     }
   }

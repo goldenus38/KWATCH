@@ -397,6 +397,33 @@ export class AlertService {
   }
 
   /**
+   * 오래된 알림을 정리합니다
+   * @param daysToKeep 보관할 일 수 (기본 180일)
+   * @returns 삭제된 알림 수
+   */
+  async cleanupOldAlerts(daysToKeep: number = 180): Promise<number> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+      const result = await this.prisma.alert.deleteMany({
+        where: {
+          createdAt: { lt: cutoffDate },
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Cleaned up ${result.count} old alerts (older than ${daysToKeep} days)`);
+      }
+
+      return result.count;
+    } catch (error) {
+      logger.error('cleanupOldAlerts failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 확인되지 않은 알림의 개수를 조회합니다
    * @returns 확인 안 된 알림 개수
    */
