@@ -46,6 +46,28 @@ interface DefacementCheckData {
   };
 }
 
+interface ActiveBaseline {
+  id: number;
+  screenshotId: string;
+  createdAt: string;
+}
+
+interface BaselineHistoryItem {
+  id: number;
+  screenshotId: string;
+  createdAt: string;
+  isActive: boolean;
+  createdBy: number | null;
+}
+
+interface ScreenshotHistoryItem {
+  id: string;
+  websiteId: number;
+  filePath: string;
+  fileSize: number | null;
+  capturedAt: string;
+}
+
 interface DetailPopupProps {
   websiteId: number | null;
   websiteName?: string;
@@ -105,7 +127,18 @@ export function DetailPopup({
   const [monitoringHistory, setMonitoringHistory] = useState<MonitoringResult[]>([]);
   const [latestDefacement, setLatestDefacement] = useState<DefacementCheckData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
+  const [activeBaseline, setActiveBaseline] = useState<ActiveBaseline | null>(null);
   const [cacheBuster, setCacheBuster] = useState(0);
+  const [defacementHistory, setDefacementHistory] = useState<DefacementCheckData[]>([]);
+  const [screenshotHistory, setScreenshotHistory] = useState<ScreenshotHistoryItem[]>([]);
+  const [baselineHistory, setBaselineHistory] = useState<BaselineHistoryItem[]>([]);
+  const [defacementHistoryPage, setDefacementHistoryPage] = useState(1);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [historyExpanded, setHistoryExpanded] = useState({
+    defacement: false,
+    baseline: false,
+    screenshot: false,
+  });
 
   // Timer refs for cleanup on unmount
   const screenshotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -136,15 +169,21 @@ export function DetailPopup({
 
     const fetchDetails = async () => {
       setIsLoading(true);
+      setDefacementHistoryPage(1);
+      setHistoryExpanded({ defacement: false, baseline: false, screenshot: false });
 
       const results = await Promise.allSettled([
         api.get<MonitoringResult[]>(`/api/monitoring/${websiteId}?limit=48`),
         api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`),
         api.get<Alert[]>(`/api/alerts?websiteId=${websiteId}&limit=10`),
         api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`),
+        api.get<ActiveBaseline>(`/api/defacement/${websiteId}/baseline`),
+        api.get<DefacementCheckData[]>(`/api/defacement/${websiteId}?limit=20`),
+        api.get<ScreenshotHistoryItem[]>(`/api/screenshots/${websiteId}?limit=20`),
+        api.get<BaselineHistoryItem[]>(`/api/defacement/${websiteId}/baselines`),
       ]);
 
-      const [historyRes, defacementRes, alertsRes, statusRes] = results;
+      const [historyRes, defacementRes, alertsRes, statusRes, baselineRes, defHistoryRes, scrHistoryRes, blHistoryRes] = results;
 
       if (historyRes.status === 'fulfilled' && historyRes.value.success && historyRes.value.data) {
         setMonitoringHistory(historyRes.value.data);
@@ -166,6 +205,22 @@ export function DetailPopup({
 
       if (statusRes.status === 'fulfilled' && statusRes.value.success && statusRes.value.data) {
         setLocalStatus(statusRes.value.data);
+      }
+
+      if (baselineRes.status === 'fulfilled' && baselineRes.value.success && baselineRes.value.data) {
+        setActiveBaseline(baselineRes.value.data);
+      }
+
+      if (defHistoryRes.status === 'fulfilled' && defHistoryRes.value.success && defHistoryRes.value.data) {
+        setDefacementHistory(Array.isArray(defHistoryRes.value.data) ? defHistoryRes.value.data : []);
+      }
+
+      if (scrHistoryRes.status === 'fulfilled' && scrHistoryRes.value.success && scrHistoryRes.value.data) {
+        setScreenshotHistory(Array.isArray(scrHistoryRes.value.data) ? scrHistoryRes.value.data : []);
+      }
+
+      if (blHistoryRes.status === 'fulfilled' && blHistoryRes.value.success && blHistoryRes.value.data) {
+        setBaselineHistory(Array.isArray(blHistoryRes.value.data) ? blHistoryRes.value.data : []);
       }
 
       setIsLoading(false);
@@ -273,14 +328,38 @@ export function DetailPopup({
 
     try {
       // 1. 베이스라인 갱신
-      await api.post(`/api/defacement/${websiteId}/baseline`, { screenshotId });
+      const baselineRes = await api.post(`/api/defacement/${websiteId}/baseline`, { screenshotId });
+      if (!baselineRes.success) {
+        console.error('[DetailPopup] Baseline update failed:', baselineRes.error);
+        if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
+        setIsBaselineRefreshing(false);
+        setBaselineElapsed(0);
+        return;
+      }
 
       // 2. 위변조 재분석 트리거 (새 베이스라인 기준으로 재분석)
-      await api.post(`/api/defacement/${websiteId}/recheck`);
+      const recheckRes = await api.post(`/api/defacement/${websiteId}/recheck`);
+      if (!recheckRes.success) {
+        console.error('[DetailPopup] Defacement recheck failed:', recheckRes.error);
+        // 베이스라인은 갱신됨 — 최신 데이터 반영 후 종료
+        const [defRes, monRes, blRes] = await Promise.all([
+          api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`),
+          api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`),
+          api.get<ActiveBaseline>(`/api/defacement/${websiteId}/baseline`),
+        ]);
+        if (defRes.success && defRes.data) setLatestDefacement(defRes.data);
+        if (monRes.success && monRes.data) setLocalStatus(monRes.data);
+        if (blRes.success && blRes.data) setActiveBaseline(blRes.data);
+        if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
+        setCacheBuster(Date.now());
+        setIsBaselineRefreshing(false);
+        setBaselineElapsed(0);
+        return;
+      }
 
       // 3. 폴링: 새 defacement check 결과 대기
       let attempts = 0;
-      const maxAttempts = 10;
+      const maxAttempts = 20;
 
       const poll = async () => {
         attempts++;
@@ -290,8 +369,12 @@ export function DetailPopup({
           if (defacementRes.data.checkedAt && defacementRes.data.checkedAt !== prevCheckedAt) {
             if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
             setLatestDefacement(defacementRes.data);
-            const monRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
+            const [monRes, blRes] = await Promise.all([
+              api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`),
+              api.get<ActiveBaseline>(`/api/defacement/${websiteId}/baseline`),
+            ]);
             if (monRes.success && monRes.data) setLocalStatus(monRes.data);
+            if (blRes.success && blRes.data) setActiveBaseline(blRes.data);
             setCacheBuster(Date.now());
             setIsBaselineRefreshing(false);
             setBaselineElapsed(0);
@@ -306,8 +389,12 @@ export function DetailPopup({
           if (defacementRes.success && defacementRes.data) {
             setLatestDefacement(defacementRes.data);
           }
-          const monRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
+          const [monRes, blRes] = await Promise.all([
+            api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`),
+            api.get<ActiveBaseline>(`/api/defacement/${websiteId}/baseline`),
+          ]);
           if (monRes.success && monRes.data) setLocalStatus(monRes.data);
+          if (blRes.success && blRes.data) setActiveBaseline(blRes.data);
           if (baselineTimerRef.current) clearInterval(baselineTimerRef.current);
           setCacheBuster(Date.now());
           setIsBaselineRefreshing(false);
@@ -335,10 +422,9 @@ export function DetailPopup({
 
     const prevCheckedAt = latestDefacement?.checkedAt || '';
 
-    try {
-      await api.post(`/api/defacement/${websiteId}/recheck`);
-    } catch (e) {
-      console.error('[DetailPopup] Defacement recheck failed:', e);
+    const recheckRes = await api.post(`/api/defacement/${websiteId}/recheck`);
+    if (!recheckRes.success) {
+      console.error('[DetailPopup] Defacement recheck failed:', recheckRes.error);
       setIsDefacementRechecking(false);
       return;
     }
@@ -465,10 +551,12 @@ export function DetailPopup({
     ? `${API_BASE_URL}${localStatus.screenshotUrl}${cb}`
     : null;
 
-  // 베이스라인 스크린샷 URL
-  const baselineScreenshotUrl = latestDefacement?.baseline?.screenshotId
-    ? `${API_BASE_URL}/api/screenshots/image/${latestDefacement.baseline.screenshotId}${cb}`
+  // 베이스라인 스크린샷 URL (활성 베이스라인 우선)
+  const baselineScreenshotId = activeBaseline?.screenshotId || latestDefacement?.baseline?.screenshotId;
+  const baselineScreenshotUrl = baselineScreenshotId
+    ? `${API_BASE_URL}/api/screenshots/image/${baselineScreenshotId}${cb}`
     : null;
+  const baselineCreatedAt = activeBaseline?.createdAt || latestDefacement?.baseline?.createdAt;
 
   // Diff 이미지 URL
   const diffImageUrl = latestDefacement?.id
@@ -932,8 +1020,8 @@ export function DetailPopup({
                           {isBaselineRefreshing && baselineElapsed > 0 && (
                             <span className="text-xs text-kwatch-accent animate-pulse">{baselineElapsed}초</span>
                           )}
-                          {!isBaselineRefreshing && latestDefacement?.baseline?.createdAt && (
-                            <span className="text-xs text-kwatch-text-muted ml-auto">{formatDateTime(latestDefacement.baseline.createdAt)}</span>
+                          {!isBaselineRefreshing && baselineCreatedAt && (
+                            <span className="text-xs text-kwatch-text-muted ml-auto">{formatDateTime(baselineCreatedAt)}</span>
                           )}
                         </div>
                         <div className="h-48 bg-black flex items-center justify-center">
@@ -1027,6 +1115,255 @@ export function DetailPopup({
                         </div>
                       </div>
                     </div>
+
+                    {/* 위변조 체크 이력 (접이식) */}
+                    <div>
+                      <button
+                        onClick={() => setHistoryExpanded((prev) => ({ ...prev, defacement: !prev.defacement }))}
+                        className="flex items-center gap-2 text-dashboard-sm font-semibold text-kwatch-text-secondary hover:text-kwatch-text-primary transition-colors w-full"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`transition-transform ${historyExpanded.defacement ? 'rotate-90' : ''}`}
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                        위변조 체크 이력 ({defacementHistory.length}건)
+                      </button>
+                      {historyExpanded.defacement && defacementHistory.length > 0 && (
+                        <div className="mt-2">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-dashboard-sm">
+                              <thead>
+                                <tr className="border-b border-kwatch-bg-tertiary text-kwatch-text-secondary">
+                                  <th className="text-left py-2 px-3 font-medium">시간</th>
+                                  <th className="text-right py-2 px-3 font-medium">유사도</th>
+                                  <th className="text-center py-2 px-3 font-medium">탐지 방식</th>
+                                  <th className="text-center py-2 px-3 font-medium">결과</th>
+                                  <th className="text-center py-2 px-3 font-medium">diff</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {defacementHistory
+                                  .slice((defacementHistoryPage - 1) * 10, defacementHistoryPage * 10)
+                                  .map((check) => {
+                                    const score = check.htmlSimilarityScore ?? check.similarityScore;
+                                    const method = check.detectionDetails ? 'hybrid' : 'pixel';
+                                    return (
+                                      <tr
+                                        key={check.id}
+                                        className={`border-b border-kwatch-bg-tertiary/50 ${
+                                          check.isDefaced ? 'bg-kwatch-status-critical/10' : ''
+                                        }`}
+                                      >
+                                        <td className="py-2 px-3 text-kwatch-text-primary font-mono whitespace-nowrap">
+                                          {formatDateTime(check.checkedAt)}
+                                        </td>
+                                        <td className={`py-2 px-3 text-right font-semibold tabular-nums ${
+                                          score != null && score < 85
+                                            ? 'text-kwatch-status-critical'
+                                            : 'text-kwatch-status-normal'
+                                        }`}>
+                                          {score != null ? `${Number(score).toFixed(1)}%` : '-'}
+                                        </td>
+                                        <td className="py-2 px-3 text-center">
+                                          <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                            method === 'hybrid'
+                                              ? 'bg-kwatch-accent/20 text-kwatch-accent'
+                                              : 'bg-kwatch-bg-tertiary text-kwatch-text-secondary'
+                                          }`}>
+                                            {method === 'hybrid' ? '하이브리드' : '픽셀'}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 px-3 text-center">
+                                          {check.isDefaced ? (
+                                            <span className="text-kwatch-status-critical font-semibold">위변조</span>
+                                          ) : (
+                                            <span className="text-kwatch-status-normal">정상</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3 text-center">
+                                          {check.diffImagePath ? (
+                                            <button
+                                              onClick={() => setImagePreviewUrl(`${API_BASE_URL}/api/defacement/diff/${check.id}`)}
+                                              className="text-kwatch-accent hover:text-kwatch-accent-hover transition-colors"
+                                              title="차이 이미지 보기"
+                                            >
+                                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="11" cy="11" r="8" />
+                                                <path d="m21 21-4.3-4.3" />
+                                              </svg>
+                                            </button>
+                                          ) : (
+                                            <span className="text-kwatch-text-muted">-</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                          {/* 페이지네이션 */}
+                          {defacementHistory.length > 10 && (
+                            <div className="flex items-center justify-center gap-2 mt-3">
+                              <button
+                                onClick={() => setDefacementHistoryPage((p) => Math.max(1, p - 1))}
+                                disabled={defacementHistoryPage === 1}
+                                className="px-2 py-1 text-xs text-kwatch-text-secondary hover:text-kwatch-text-primary disabled:opacity-30 transition-colors"
+                              >
+                                &lt;&lt;
+                              </button>
+                              {Array.from({ length: Math.ceil(defacementHistory.length / 10) }, (_, i) => (
+                                <button
+                                  key={i + 1}
+                                  onClick={() => setDefacementHistoryPage(i + 1)}
+                                  className={`px-2 py-1 text-xs rounded ${
+                                    defacementHistoryPage === i + 1
+                                      ? 'bg-kwatch-accent text-white'
+                                      : 'text-kwatch-text-secondary hover:text-kwatch-text-primary'
+                                  }`}
+                                >
+                                  {i + 1}
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => setDefacementHistoryPage((p) => Math.min(Math.ceil(defacementHistory.length / 10), p + 1))}
+                                disabled={defacementHistoryPage === Math.ceil(defacementHistory.length / 10)}
+                                className="px-2 py-1 text-xs text-kwatch-text-secondary hover:text-kwatch-text-primary disabled:opacity-30 transition-colors"
+                              >
+                                &gt;&gt;
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {historyExpanded.defacement && defacementHistory.length === 0 && (
+                        <div className="mt-2 text-center py-4 text-kwatch-text-muted text-dashboard-sm bg-kwatch-bg-tertiary/20 rounded">
+                          위변조 체크 이력이 없습니다
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 베이스라인 변경 이력 (접이식) */}
+                    <div>
+                      <button
+                        onClick={() => setHistoryExpanded((prev) => ({ ...prev, baseline: !prev.baseline }))}
+                        className="flex items-center gap-2 text-dashboard-sm font-semibold text-kwatch-text-secondary hover:text-kwatch-text-primary transition-colors w-full"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`transition-transform ${historyExpanded.baseline ? 'rotate-90' : ''}`}
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                        베이스라인 변경 이력 ({baselineHistory.length}건)
+                      </button>
+                      {historyExpanded.baseline && baselineHistory.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          {baselineHistory.map((bl) => (
+                            <div
+                              key={bl.id}
+                              className="flex items-center gap-3 bg-kwatch-bg-tertiary/20 rounded px-4 py-2"
+                            >
+                              <div
+                                className="w-16 h-9 bg-black rounded overflow-hidden flex-shrink-0 cursor-pointer"
+                                onClick={() => setImagePreviewUrl(`${API_BASE_URL}/api/screenshots/image/${bl.screenshotId}`)}
+                              >
+                                <img
+                                  src={`${API_BASE_URL}/api/screenshots/thumbnail/${bl.screenshotId}`}
+                                  alt="베이스라인 썸네일"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <span className="text-dashboard-sm text-kwatch-text-primary font-mono flex-1">
+                                {formatDateTime(bl.createdAt)}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                bl.isActive
+                                  ? 'bg-kwatch-status-normal/20 text-kwatch-status-normal'
+                                  : 'bg-kwatch-bg-tertiary text-kwatch-text-muted'
+                              }`}>
+                                {bl.isActive ? '활성' : '비활성'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {historyExpanded.baseline && baselineHistory.length === 0 && (
+                        <div className="mt-2 text-center py-4 text-kwatch-text-muted text-dashboard-sm bg-kwatch-bg-tertiary/20 rounded">
+                          베이스라인 이력이 없습니다
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 스크린샷 이력 갤러리 (접이식) */}
+                    <div>
+                      <button
+                        onClick={() => setHistoryExpanded((prev) => ({ ...prev, screenshot: !prev.screenshot }))}
+                        className="flex items-center gap-2 text-dashboard-sm font-semibold text-kwatch-text-secondary hover:text-kwatch-text-primary transition-colors w-full"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`transition-transform ${historyExpanded.screenshot ? 'rotate-90' : ''}`}
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                        스크린샷 이력 ({screenshotHistory.length}건)
+                      </button>
+                      {historyExpanded.screenshot && screenshotHistory.length > 0 && (
+                        <div className="mt-2 flex gap-3 overflow-x-auto pb-2">
+                          {screenshotHistory.map((scr) => (
+                            <div
+                              key={scr.id}
+                              className="flex-shrink-0 cursor-pointer group"
+                              onClick={() => setImagePreviewUrl(`${API_BASE_URL}/api/screenshots/image/${scr.id}`)}
+                            >
+                              <div className="w-32 h-[72px] bg-black rounded overflow-hidden border border-kwatch-bg-tertiary group-hover:border-kwatch-accent transition-colors">
+                                <img
+                                  src={`${API_BASE_URL}/api/screenshots/thumbnail/${scr.id}`}
+                                  alt={`스크린샷 ${formatDateTime(scr.capturedAt)}`}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                              </div>
+                              <div className="text-xs text-kwatch-text-muted mt-1 text-center font-mono">
+                                {formatTime(scr.capturedAt)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {historyExpanded.screenshot && screenshotHistory.length === 0 && (
+                        <div className="mt-2 text-center py-4 text-kwatch-text-muted text-dashboard-sm bg-kwatch-bg-tertiary/20 rounded">
+                          스크린샷 이력이 없습니다
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-8 text-kwatch-text-muted bg-kwatch-bg-tertiary/30 rounded">
@@ -1038,6 +1375,29 @@ export function DetailPopup({
           )}
         </div>
       </div>
+
+      {/* 이미지 확대 미리보기 모달 */}
+      {imagePreviewUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60]"
+          onClick={() => setImagePreviewUrl(null)}
+        >
+          <button
+            onClick={() => setImagePreviewUrl(null)}
+            className="absolute top-4 right-4 text-2xl text-kwatch-text-secondary hover:text-kwatch-text-primary transition-colors"
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+          <img
+            src={imagePreviewUrl}
+            alt="이미지 미리보기"
+            className="max-w-[90vw] max-h-[90vh] object-contain"
+            onClick={(e) => e.stopPropagation()}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        </div>
+      )}
     </div>
   );
 }

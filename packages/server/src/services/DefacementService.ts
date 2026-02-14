@@ -408,6 +408,13 @@ export class DefacementService {
         `Baseline updated for website ${websiteId} by user ${userId}: screenshot ${screenshotId}` +
           (htmlBaselineData ? ` (htmlHash: ${htmlBaselineData.htmlHash.slice(0, 8)}...)` : ''),
       );
+
+      // 사이트당 최대 10개 베이스라인 유지 — 초과분 삭제 (실패해도 베이스라인 갱신에 영향 없음)
+      try {
+        await this.cleanupOldBaselines(websiteId, 10);
+      } catch (cleanupErr) {
+        logger.warn(`cleanupOldBaselines failed for website ${websiteId}:`, cleanupErr);
+      }
     } catch (error) {
       logger.error(
         `updateBaseline failed for website ${websiteId}:`,
@@ -415,6 +422,31 @@ export class DefacementService {
       );
       throw error;
     }
+  }
+
+  /**
+   * 사이트별 오래된 베이스라인을 정리합니다 (활성 베이스라인 제외)
+   * @param websiteId 웹사이트 ID
+   * @param maxPerSite 사이트당 최대 보관 개수
+   */
+  private async cleanupOldBaselines(websiteId: number, maxPerSite: number): Promise<void> {
+    const allBaselines = await this.prisma.defacementBaseline.findMany({
+      where: { websiteId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, isActive: true },
+    });
+
+    if (allBaselines.length <= maxPerSite) return;
+
+    // 최신 maxPerSite개를 유지, 나머지 삭제
+    const toDelete = allBaselines.slice(maxPerSite).filter((b) => !b.isActive);
+    if (toDelete.length === 0) return;
+
+    await this.prisma.defacementBaseline.deleteMany({
+      where: { id: { in: toDelete.map((b) => b.id) } },
+    });
+
+    logger.debug(`Cleaned up ${toDelete.length} old baselines for website ${websiteId}`);
   }
 
   /**

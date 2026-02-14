@@ -421,12 +421,13 @@ router.post('/defacement/baseline-bulk', authenticate, authorize('admin'), async
     // 모든 활성 웹사이트 조회
     const websites = await prisma.website.findMany({
       where: { isActive: true },
-      select: { id: true, name: true },
+      select: { id: true, name: true, url: true },
     });
 
     let updated = 0;
     let skipped = 0;
     let failed = 0;
+    let analyzed = 0;
 
     const { defacementService } = await import('../services/DefacementService');
 
@@ -443,22 +444,47 @@ router.post('/defacement/baseline-bulk', authenticate, authorize('admin'), async
           continue;
         }
 
-        await defacementService.updateBaseline(website.id, latestScreenshot.id, userId);
+        // HTML 콘텐츠 fetch (하이브리드 베이스라인 데이터 생성용)
+        let htmlContent: string | undefined;
+        try {
+          const response = await fetch(website.url, {
+            signal: AbortSignal.timeout(10000),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          });
+          if (response.ok) {
+            htmlContent = await response.text();
+          }
+        } catch {
+          // HTML fetch 실패 시 pixel_only 베이스라인으로 생성 (무시)
+        }
+
+        await defacementService.updateBaseline(website.id, latestScreenshot.id, userId, htmlContent);
         updated++;
+
+        // 베이스라인 갱신 후 위변조 재분석 (새 베이스라인 기준)
+        try {
+          await defacementService.compareWithBaseline(website.id, latestScreenshot.id);
+          analyzed++;
+        } catch (analyzeErr) {
+          logger.warn(`Baseline bulk: defacement recheck failed for website ${website.id}:`, analyzeErr);
+        }
       } catch (err) {
         logger.error(`Baseline bulk update failed for website ${website.id}:`, err);
         failed++;
       }
     }
 
-    logger.info(`Baseline bulk update completed: ${updated} updated, ${skipped} skipped, ${failed} failed`);
+    logger.info(`Baseline bulk update completed: ${updated} updated, ${analyzed} analyzed, ${skipped} skipped, ${failed} failed`);
 
     sendSuccess(res, {
       total: websites.length,
       updated,
+      analyzed,
       skipped,
       failed,
-      message: `베이스라인 일괄 교체 완료: ${updated}개 갱신, ${skipped}개 스킵(스크린샷 없음), ${failed}개 실패`,
+      message: `베이스라인 일괄 교체 완료: ${updated}개 갱신, ${analyzed}개 분석, ${skipped}개 스킵(스크린샷 없음), ${failed}개 실패`,
     });
   } catch (error) {
     logger.error('베이스라인 일괄 교체 오류:', error);

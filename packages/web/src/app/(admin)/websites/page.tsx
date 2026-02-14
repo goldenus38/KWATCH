@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { Website, Category, PaginationMeta } from '@/types';
 import * as XLSX from 'xlsx';
@@ -40,6 +40,7 @@ interface BulkResult {
 }
 
 export default function WebsitesPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [websites, setWebsites] = useState<Website[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -715,6 +716,16 @@ export default function WebsitesPage() {
                   </td>
                   <td className="px-6 py-3 text-sm whitespace-nowrap">
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => router.push(`/?detail=${website.id}`)}
+                        className="p-1.5 rounded hover:bg-kwatch-bg-tertiary text-kwatch-text-muted hover:text-kwatch-accent transition-colors"
+                        title="모니터링 보기"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
                       <button
                         onClick={() => openEditModal(website)}
                         className="p-1.5 rounded hover:bg-kwatch-bg-tertiary text-kwatch-accent hover:text-kwatch-accent-hover transition-colors"

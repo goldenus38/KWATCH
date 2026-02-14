@@ -86,13 +86,37 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
         }
 
         // 스크린샷 작업 큐에 추가 (Redis rate limit으로 주기 제한)
-        // DOWN 사이트는 스크린샷도 실패할 것이 확실하므로 스킵
+        // DOWN 사이트는 기본 스킵하되, 스크린샷이 하나도 없으면 1회 시도 (에러 페이지라도 캡처)
+        const screenshotInterval = config.monitoring.screenshotInterval;
+
         if (!result.isUp) {
-          logger.debug(`[MonitoringWorker] Skipping screenshot for DOWN website ${job.data.websiteId}`);
+          try {
+            const hasScreenshot = await prisma.screenshot.findFirst({
+              where: { websiteId: job.data.websiteId },
+              select: { id: true },
+            });
+            if (!hasScreenshot) {
+              const rateLimitKey = `screenshot:ratelimit:${job.data.websiteId}`;
+              const isLimited = await redis.get(rateLimitKey);
+              if (!isLimited) {
+                await redis.set(rateLimitKey, '1', 'EX', screenshotInterval);
+                const freshWebsite = await prisma.website.findUnique({
+                  where: { id: job.data.websiteId },
+                  select: { id: true, url: true },
+                });
+                if (freshWebsite) {
+                  await schedulerService.enqueueScreenshot({ id: freshWebsite.id, url: freshWebsite.url }, false);
+                  logger.info(`[MonitoringWorker] Screenshot enqueued for DOWN website ${job.data.websiteId} (no prior screenshot)`);
+                }
+              }
+            } else {
+              logger.debug(`[MonitoringWorker] Skipping screenshot for DOWN website ${job.data.websiteId}`);
+            }
+          } catch (error) {
+            logger.warn(`[MonitoringWorker] Failed to enqueue screenshot for DOWN website ${job.data.websiteId}:`, error);
+          }
         } else {
           try {
-            const redis = getRedisClient();
-            const screenshotInterval = config.monitoring.screenshotInterval;
             const rateLimitKey = `screenshot:ratelimit:${job.data.websiteId}`;
             const isLimited = await redis.get(rateLimitKey);
 

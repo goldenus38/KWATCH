@@ -27,7 +27,7 @@ export const config = {
     dir: process.env.SCREENSHOT_DIR || './screenshots',
     viewportWidth: parseInt(process.env.SCREENSHOT_VIEWPORT_WIDTH || '1920', 10),
     viewportHeight: parseInt(process.env.SCREENSHOT_VIEWPORT_HEIGHT || '1080', 10),
-    timeout: parseInt(process.env.SCREENSHOT_TIMEOUT || '15000', 10),
+    timeout: parseInt(process.env.SCREENSHOT_TIMEOUT || '20000', 10),
   },
 
   // Monitoring

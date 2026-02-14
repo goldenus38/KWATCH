@@ -11,7 +11,7 @@ import { ScreenshotResult } from '../types';
  * 스크린샷 품질 판정 최소 파일 크기 (bytes)
  * 1920x1080 뷰포트에서 빈 흰 페이지 ~8-15KB, 정상 페이지 50KB+
  */
-const MIN_VALID_SCREENSHOT_BYTES = 30_000;
+const MIN_VALID_SCREENSHOT_BYTES = 15_000;
 
 /**
  * 재시도 전략 (순서대로 시도)
@@ -43,10 +43,11 @@ export class ScreenshotService {
    * Playwright 브라우저 인스턴스를 초기화합니다 (lazy initialization)
    */
   private async initBrowser(): Promise<Browser> {
-    // TODO: 이미 초기화되었으면 기존 브라우저 반환
-    // TODO: Chromium 브라우저 실행
-    // TODO: 메모리 누수 방지를 위한 이벤트 리스너 설정
-    // TODO: 연결 끊김 시 자동 재연결 로직 구현
+    // 브라우저가 크래시/연결 끊김인 경우 참조 해제하여 재생성 유도
+    if (this.browser && !this.browser.isConnected()) {
+      logger.warn('Playwright browser disconnected, will reinitialize');
+      this.browser = null;
+    }
 
     if (!this.browser) {
       this.browser = await chromium.launch({
@@ -57,6 +58,10 @@ export class ScreenshotService {
           '--no-sandbox', // Docker 환경 대응
           '--disable-gpu',
         ],
+      });
+      this.browser.on('disconnected', () => {
+        logger.warn('Playwright browser disconnected event');
+        this.browser = null;
       });
       logger.info('Playwright browser initialized');
     }
@@ -490,11 +495,11 @@ export class ScreenshotService {
   }
 
   /**
-   * 오래된 스크린샷을 정리합니다 (기본 7일 이상 된 스크린샷)
+   * 오래된 스크린샷을 정리합니다 (기본 2일 이상 된 스크린샷)
    * @param daysToKeep 보관할 일 수
    * @returns 삭제된 스크린샷 수
    */
-  async cleanupOldScreenshots(daysToKeep: number = 7): Promise<number> {
+  async cleanupOldScreenshots(daysToKeep: number = 2): Promise<number> {
     // TODO: daysToKeep 이전의 모든 스크린샷 조회
     // TODO: 각 스크린샷 파일 삭제
     // TODO: 각 썸네일 파일 삭제

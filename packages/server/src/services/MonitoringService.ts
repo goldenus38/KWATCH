@@ -60,10 +60,11 @@ export class MonitoringService {
     url: string,
     method: 'HEAD' | 'GET',
     controller: AbortController,
-  ): Promise<{ response: Response; finalUrl: string; redirectCount: number }> {
+  ): Promise<{ response: Response; finalUrl: string; redirectCount: number; isLoop: boolean }> {
     let currentUrl = url;
     let redirectCount = 0;
     let response: Response | null = null;
+    const visitedUrls = new Set<string>([currentUrl]);
 
     while (redirectCount <= MonitoringService.MAX_REDIRECTS) {
       response = await fetch(currentUrl, {
@@ -81,13 +82,20 @@ export class MonitoringService {
         } catch {
           break; // 잘못된 Location 헤더 — 리다이렉트 중단
         }
+
+        // 리다이렉트 루프 감지 (이미 방문한 URL 재방문)
+        if (visitedUrls.has(currentUrl)) {
+          return { response: response!, finalUrl: currentUrl, redirectCount: redirectCount + 1, isLoop: true };
+        }
+        visitedUrls.add(currentUrl);
+
         redirectCount++;
         continue;
       }
       break;
     }
 
-    return { response: response!, finalUrl: currentUrl, redirectCount };
+    return { response: response!, finalUrl: currentUrl, redirectCount, isLoop: false };
   }
 
   /**
@@ -119,19 +127,38 @@ export class MonitoringService {
 
       try {
         // HEAD 요청 + 수동 리다이렉트 추적
-        let { response, finalUrl, redirectCount } = await this.fetchWithManualRedirect(
+        let { response, finalUrl, redirectCount, isLoop } = await this.fetchWithManualRedirect(
           url, 'HEAD', controller,
         );
 
-        // 리다이렉트 횟수 초과
-        if (redirectCount > MonitoringService.MAX_REDIRECTS) {
-          return {
-            statusCode: null,
-            responseTimeMs: Date.now() - startTime,
-            isUp: false,
-            errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
-            finalUrl,
-          };
+        // 리다이렉트 루프 또는 횟수 초과 → GET + redirect:follow fallback
+        if (isLoop || redirectCount > MonitoringService.MAX_REDIRECTS) {
+          const fallbackController = new AbortController();
+          const fallbackTimeoutId = setTimeout(
+            () => fallbackController.abort(),
+            timeoutSeconds * 1000,
+          );
+
+          try {
+            const followRes = await fetch(url, {
+              method: 'GET',
+              signal: fallbackController.signal,
+              redirect: 'follow',
+              headers: MonitoringService.BROWSER_HEADERS,
+            });
+            response = followRes;
+            finalUrl = followRes.url || url;
+          } catch {
+            return {
+              statusCode: null,
+              responseTimeMs: Date.now() - startTime,
+              isUp: false,
+              errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
+              finalUrl,
+            };
+          } finally {
+            clearTimeout(fallbackTimeoutId);
+          }
         }
 
         // HEAD 4xx → GET fallback (많은 서버가 HEAD를 차단)
@@ -149,14 +176,33 @@ export class MonitoringService {
             response = getResult.response;
             finalUrl = getResult.finalUrl;
 
-            if (getResult.redirectCount > MonitoringService.MAX_REDIRECTS) {
-              return {
-                statusCode: null,
-                responseTimeMs: Date.now() - startTime,
-                isUp: false,
-                errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
-                finalUrl,
-              };
+            if (getResult.isLoop || getResult.redirectCount > MonitoringService.MAX_REDIRECTS) {
+              // GET + manual도 루프 → follow 모드로 최종 시도
+              const followController = new AbortController();
+              const followTimeoutId = setTimeout(
+                () => followController.abort(),
+                timeoutSeconds * 1000,
+              );
+              try {
+                const followRes = await fetch(url, {
+                  method: 'GET',
+                  signal: followController.signal,
+                  redirect: 'follow',
+                  headers: MonitoringService.BROWSER_HEADERS,
+                });
+                response = followRes;
+                finalUrl = followRes.url || url;
+              } catch {
+                return {
+                  statusCode: null,
+                  responseTimeMs: Date.now() - startTime,
+                  isUp: false,
+                  errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
+                  finalUrl,
+                };
+              } finally {
+                clearTimeout(followTimeoutId);
+              }
             }
           } finally {
             clearTimeout(fallbackTimeoutId);
@@ -503,19 +549,19 @@ export class MonitoringService {
   }
 
   /**
-   * 웹사이트의 모니터링 이력을 조회합니다
-   * @param websiteId 웹사이트 ID
-   * @param limit 최대 개수
-   * @param offset 오프셋
-   * @returns MonitoringResult 배열
-   */
-  /**
    * 웹사이트의 모니터링 이력 총 개수를 조회합니다
    */
   async getHistoryCount(websiteId: number): Promise<number> {
     return this.prisma.monitoringResult.count({ where: { websiteId } });
   }
 
+  /**
+   * 웹사이트의 모니터링 이력을 조회합니다
+   * @param websiteId 웹사이트 ID
+   * @param limit 최대 개수
+   * @param offset 오프셋
+   * @returns MonitoringResult 배열
+   */
   async getHistory(
     websiteId: number,
     limit: number = 100,

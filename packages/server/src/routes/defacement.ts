@@ -67,6 +67,68 @@ router.get('/:websiteId/latest', async (req, res) => {
 });
 
 /**
+ * GET /api/defacement/:websiteId/baselines
+ * 특정 웹사이트의 전체 베이스라인 이력 조회 (활성+비활성)
+ */
+router.get('/:websiteId/baselines', async (req, res) => {
+  try {
+    const { websiteId } = req.params;
+    const siteId = parseInt(websiteId);
+
+    if (isNaN(siteId)) {
+      sendError(res, 'INVALID_ID', '유효하지 않은 웹사이트 ID입니다.', 400);
+      return;
+    }
+
+    const baselines = await prisma.defacementBaseline.findMany({
+      where: { websiteId: siteId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        screenshotId: true,
+        createdAt: true,
+        isActive: true,
+        createdBy: true,
+      },
+    });
+
+    sendSuccess(res, baselines);
+  } catch (error) {
+    sendError(res, 'BASELINES_HISTORY_ERROR', '베이스라인 이력 조회 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
+ * GET /api/defacement/:websiteId/baseline
+ * 특정 웹사이트의 현재 활성 베이스라인 조회
+ */
+router.get('/:websiteId/baseline', async (req, res) => {
+  try {
+    const { websiteId } = req.params;
+    const siteId = parseInt(websiteId);
+
+    if (isNaN(siteId)) {
+      sendError(res, 'INVALID_ID', '유효하지 않은 웹사이트 ID입니다.', 400);
+      return;
+    }
+
+    const baseline = await prisma.defacementBaseline.findFirst({
+      where: { websiteId: siteId, isActive: true },
+      include: { screenshot: true },
+    });
+
+    if (!baseline) {
+      sendError(res, 'NOT_FOUND', '활성 베이스라인이 없습니다.', 404);
+      return;
+    }
+
+    sendSuccess(res, baseline);
+  } catch (error) {
+    sendError(res, 'BASELINE_GET_ERROR', '베이스라인 조회 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
  * POST /api/defacement/:websiteId/baseline
  * 특정 웹사이트의 위변조 베이스라인 갱신
  */
@@ -95,7 +157,29 @@ router.post('/:websiteId/baseline', authenticate, async (req, res) => {
       return;
     }
 
-    await defacementService.updateBaseline(siteId, BigInt(scrId), userId);
+    // HTML 콘텐츠 fetch (하이브리드 베이스라인 데이터 생성용)
+    const website = await prisma.website.findUnique({
+      where: { id: siteId },
+      select: { url: true },
+    });
+    let htmlContent: string | undefined;
+    if (website) {
+      try {
+        const response = await fetch(website.url, {
+          signal: AbortSignal.timeout(10000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        });
+        if (response.ok) {
+          htmlContent = await response.text();
+        }
+      } catch {
+        // HTML fetch 실패 시 pixel_only 베이스라인으로 생성 (무시)
+      }
+    }
+
+    await defacementService.updateBaseline(siteId, BigInt(scrId), userId, htmlContent);
 
     const newBaseline = await prisma.defacementBaseline.findFirst({
       where: { websiteId: siteId, isActive: true },
@@ -159,7 +243,9 @@ router.post('/:websiteId/recheck', authenticate, async (req, res) => {
     try {
       const response = await fetch(website.url, {
         signal: AbortSignal.timeout(10000),
-        headers: { 'User-Agent': 'KWATCH/1.0' },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
       });
       if (response.ok) {
         htmlContent = await response.text();
@@ -168,19 +254,18 @@ router.post('/:websiteId/recheck', authenticate, async (req, res) => {
       // HTML fetch 실패 시 pixel_only로 fallback (무시)
     }
 
-    // 위변조 재분석 큐에 등록
-    const { schedulerService } = await import('../services/SchedulerService');
-    await schedulerService.enqueueDefacementCheck(
+    // 위변조 재분석 직접 실행
+    const result = await defacementService.compareWithBaseline(
       siteId,
       latestScreenshot.id,
-      activeBaseline.id,
       htmlContent,
     );
 
     sendSuccess(res, {
-      status: 'queued',
-      message: '위변조 재분석이 큐에 등록되었습니다.',
-    }, 202);
+      status: 'completed',
+      message: '위변조 재분석이 완료되었습니다.',
+      result,
+    });
   } catch (error) {
     sendError(res, 'RECHECK_ERROR', '위변조 재분석 요청 중 오류가 발생했습니다.', 500);
   }

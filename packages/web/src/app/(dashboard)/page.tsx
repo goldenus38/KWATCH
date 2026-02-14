@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useMonitoringData } from '@/hooks/useMonitoringData';
 import { useAutoRotation } from '@/hooks/useAutoRotation';
 import { connectSocket } from '@/lib/socket';
@@ -13,6 +14,9 @@ import { DetailPopup } from '@/components/dashboard/DetailPopup';
 import type { MonitoringStatus, SummaryFilterType } from '@/types';
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const {
     summary,
     statuses,
@@ -29,6 +33,24 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState<SummaryFilterType>(null);
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
   const [autoRotateInterval, setAutoRotateInterval] = useState(DEFAULT_AUTO_ROTATE_INTERVAL);
+
+  // ?detail=<websiteId> 쿼리 파라미터로 DetailPopup 자동 오픈
+  const detailHandled = useRef(false);
+  useEffect(() => {
+    const detailId = searchParams.get('detail');
+    if (!detailId || detailHandled.current || statuses.length === 0) return;
+
+    const websiteId = parseInt(detailId, 10);
+    if (isNaN(websiteId)) return;
+
+    const site = statuses.find((s) => s.websiteId === websiteId);
+    if (site) {
+      setSelectedStatus(site);
+      detailHandled.current = true;
+      // URL에서 detail 파라미터 제거 (뒤로가기 시 다시 팝업 안 뜨도록)
+      router.replace('/', { scroll: false });
+    }
+  }, [searchParams, statuses, router]);
 
   // 대시보드 설정을 서버에서 로드
   useEffect(() => {

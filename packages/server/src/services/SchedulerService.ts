@@ -119,7 +119,7 @@ export class SchedulerService {
           const { alertService } = await import('./AlertService');
 
           const [screenshots, results, defacement, alerts] = await Promise.allSettled([
-            screenshotService.cleanupOldScreenshots(7),
+            screenshotService.cleanupOldScreenshots(2),
             monitoringService.cleanupOldResults(90),
             monitoringService.cleanupOldDefacementChecks(90),
             alertService.cleanupOldAlerts(180),
@@ -276,12 +276,26 @@ export class SchedulerService {
         where: { isActive: true },
       });
 
-      const total = websites.length;
+      // 스크린샷 없는 사이트를 stagger 윈도우 앞쪽에 배치 (No Image 빠르게 해소)
+      const websitesWithScreenshots = await this.prisma.screenshot.findMany({
+        select: { websiteId: true },
+        distinct: ['websiteId'],
+      });
+      const hasScreenshotSet = new Set(websitesWithScreenshots.map(s => s.websiteId));
+
+      const sorted = [...websites].sort((a, b) => {
+        const aHas = hasScreenshotSet.has(a.id) ? 1 : 0;
+        const bHas = hasScreenshotSet.has(b.id) ? 1 : 0;
+        return aHas - bHas;
+      });
+
+      const total = sorted.length;
+      const noScreenshotCount = total - [...new Set(websites.map(w => w.id))].filter(id => hasScreenshotSet.has(id)).length;
       const staggerWindowMs = config.monitoring.staggerWindowSeconds * 1000;
-      logger.info(`Scheduling monitoring for ${total} websites (staggered over ${config.monitoring.staggerWindowSeconds}s window)`);
+      logger.info(`Scheduling monitoring for ${total} websites (staggered over ${config.monitoring.staggerWindowSeconds}s window, ${noScreenshotCount} without screenshots prioritized)`);
 
       for (let i = 0; i < total; i++) {
-        const website = websites[i];
+        const website = sorted[i];
         // 첫 실행을 stagger 윈도우 내에 균등 분산 (thundering herd 방지)
         const staggerDelayMs = Math.floor((i / total) * staggerWindowMs);
         await this.scheduleMonitoring(website, staggerDelayMs, false);

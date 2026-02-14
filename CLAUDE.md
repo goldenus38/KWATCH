@@ -660,7 +660,8 @@ volumes:
 ### 데이터 보관 정책
 
 - 모니터링 결과: 90일 보관 후 자동 삭제 (cron job)
-- 스크린샷: 최근 7일분만 보관 (베이스라인은 영구 보관)
+- 스크린샷: 최근 2일분만 보관
+- 베이스라인: 사이트당 최대 10개 보관 (초과 시 오래된 비활성 베이스라인 자동 삭제)
 - 알림 이력: 180일 보관
 - 위변조 체크 결과: 90일 보관
 
@@ -721,6 +722,7 @@ volumes:
 | Phase 10 | **완료** | K-WATCH 로고 브랜딩, 외부 도메인 신뢰 화이트리스트 |
 | Phase 11 | **완료** | v1.0 수정요구사항 반영 (대시보드 UX, 관리 레이아웃, 설정 기본값) |
 | Phase 12 | **완료** | 대시보드 UX 개선 + HTTP 모니터링 강화 6건 + 사이트별 가중치 커스텀 |
+| Phase 13 | **완료** | 대시보드 "No Image" 원인 분석 및 스크린샷 파이프라인 개선 6건 |
 
 ### 주요 구현 세부사항
 
@@ -861,6 +863,13 @@ volumes:
   - Prisma schema: `useCustomWeights`, `customWeightPixel`, `customWeightStructural`, `customWeightCritical` 필드 추가
   - 웹사이트 등록/수정 API에서 커스텀 가중치 지원, 합계 1.0 검증
   - DefacementService에서 사이트별 커스텀 가중치 우선 적용, 미설정 시 글로벌 환경변수 가중치 사용
+- **대시보드 "No Image" 개선 (Phase 13)** — 스크린샷 파이프라인 분석 후 6건 개선:
+  - **DOWN 사이트 최초 스크린샷 시도**: `monitoringWorker`에서 `isUp=false`여도 스크린샷 레코드가 없는 사이트는 1회 스크린샷 시도 (에러 페이지/WAF 차단 페이지라도 캡처, 영구 No Image 방지)
+  - **스크린샷 타임아웃 기본값 증가**: `SCREENSHOT_TIMEOUT` 15초 → 20초 (느린 공공기관 사이트 대응)
+  - **스크린샷 품질 임계값 하향**: `MIN_VALID_SCREENSHOT_BYTES` 30KB → 15KB (로고+텍스트만 있는 간단한 페이지도 통과)
+  - **Playwright 브라우저 크래시 자동 복구**: `initBrowser()`에서 `isConnected()` 체크 + `disconnected` 이벤트 리스너로 stale 참조 자동 해제 → 후속 캡처 시 브라우저 재생성
+  - **SiteCard 상태별 안내 메시지**: "No Image" → 원인별 한국어 메시지 ("이미지 로드 실패" / "접속 불가" / "캡처 대기중")
+  - **서버 시작 시 스크린샷 없는 사이트 우선 스케줄**: `scheduleAllWebsites()`에서 스크린샷 미보유 사이트를 stagger 윈도우 앞쪽에 배치 → 서버 재시작 후 No Image 빠르게 해소
 
 ### 하이브리드 위변조 탐지 환경변수
 

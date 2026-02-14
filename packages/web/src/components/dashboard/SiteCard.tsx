@@ -56,7 +56,13 @@ export const SiteCard = React.memo(function SiteCard({ data, onClick, responseTi
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-kwatch-bg-tertiary">
-            <span className="text-kwatch-text-muted text-xs">No Image</span>
+            <span className="text-kwatch-text-muted text-xs">
+              {imgError
+                ? '이미지 로드 실패'
+                : !data.isUp
+                  ? '접속 불가'
+                  : '캡처 대기중'}
+            </span>
           </div>
         )}
 
