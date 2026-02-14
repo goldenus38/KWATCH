@@ -720,13 +720,14 @@ volumes:
 | Phase 9 | **완료** | DetailPopup 섹션별 새로고침, 설정 베이스라인 관리, 대시보드 로딩 최적화 |
 | Phase 10 | **완료** | K-WATCH 로고 브랜딩, 외부 도메인 신뢰 화이트리스트 |
 | Phase 11 | **완료** | v1.0 수정요구사항 반영 (대시보드 UX, 관리 레이아웃, 설정 기본값) |
+| Phase 12 | **완료** | 대시보드 UX 개선 + HTTP 모니터링 강화 6건 + 사이트별 가중치 커스텀 |
 
 ### 주요 구현 세부사항
 
 - **SSL 인증서 검증 우회**: `NODE_TLS_REJECT_UNAUTHORIZED=0` (docker-compose.yml) + Playwright `ignoreHTTPSErrors: true` — 관제 시스템은 SSL 유효성 검증이 목적이 아니므로 중간 인증서 누락/도메인 불일치 등 모두 무시
 - **에러 메시지 개선**: MonitoringService에서 `error.cause`의 실제 원인 추출 ("fetch failed" 대신 "unable to verify the first certificate" 등 표시)
 - **대시보드 정렬 안정화**: ScreenshotGrid 정렬에 `websiteId` 보조 키 추가하여 동일 우선순위 사이트 순서 고정
-- **모니터링**: HEAD 요청 우선, 4xx 응답 시 GET으로 자동 fallback (한국 공공기관 서버 호환)
+- **모니터링**: HEAD 요청 우선, 4xx 응답 시 GET으로 자동 fallback (한국 공공기관 서버 호환), `redirect: 'manual'`로 수동 리다이렉트 추적 (최대 10회), 브라우저 유사 UA/Accept/Accept-Language 헤더로 WAF 호환성 향상
 - **스크린샷**: Docker 환경에서 시스템 Chromium 사용 (`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 환경변수)
 - **팝업 자동 제거**: 스크린샷 캡처 전 한국 공공기관 사이트 팝업을 자동 dismiss
   - JS dialog (`alert`/`confirm`/`prompt`) 자동 dismiss
@@ -848,6 +849,18 @@ volumes:
   - **대시보드 설정 저장**: `GET/PUT /api/settings/dashboard` 엔드포인트 추가, 대시보드 페이지에서 API로 설정값 로드, 설정 페이지에서 저장 버튼 동작
   - **라벨 변경**: "베이스라인 관리" → "베이스 스크린샷 관리", 응답시간 경고 프리셋 10s/30s/60s/100s
   - **보류**: 알림 채널 설정 UI (환경변수→DB 기반 전환 필요, 별도 Phase로 분리)
+- **대시보드 UX 개선 + HTTP 모니터링 강화 (Phase 12)** — 운영팀 피드백 6건:
+  - **DetailPopup 열림 시 자동전환 일시정지**: `useAutoRotation` 훅에 `paused` prop 추가, `selectedStatus !== null`일 때 타이머 정지, 팝업 닫으면 자동 재개
+  - **HTTP 리다이렉트 수동 추적**: `redirect: 'follow'` → `redirect: 'manual'`로 전환, 최대 10회 리다이렉트 직접 따라가며 `finalUrl` 정확 기록, 초과 시 "리다이렉트 횟수 초과" 에러 반환
+  - **브라우저 유사 헤더**: `KWATCH/1.0` UA → Chrome UA로 변경, `Accept`/`Accept-Language`/`Accept-Encoding` 헤더 추가 (WAF/방화벽 호환성 향상, Connect Timeout 해소)
+  - **DNS/네트워크 일시 오류 재시도**: `ENOTFOUND`/`ECONNRESET`/`UND_ERR_CONNECT_TIMEOUT` 감지 시 2초 대기 후 1회 재시도, 한국어 에러 메시지 ("DNS 해석 실패", "연결 시간 초과", "요청 시간 초과")
+  - **URL 수정 시 즉시 갱신**: 웹사이트 PUT에서 URL 변경 감지 → 기존 베이스라인 전체 비활성화 + 즉시 모니터링/스크린샷 큐잉 (새 스크린샷 캡처 후 자동 베이스라인 생성)
+  - **DetailPopup HTTP 상태 새로고침**: "HTTP 상태" 라벨 옆 새로고침 아이콘 + 경과시간 표시, `handleHttpRefresh` — POST refresh → 3초 폴링으로 `checkedAt` 변경 감지 (최대 30초) + 응답추이 차트 데이터 동시 갱신
+  - **monitoringWorker finalUrl 버그 수정**: `prisma.monitoringResult.create()`에 `finalUrl: result.finalUrl` 누락 수정
+- **사이트별 가중치 커스텀 설정 (Phase 12)**:
+  - Prisma schema: `useCustomWeights`, `customWeightPixel`, `customWeightStructural`, `customWeightCritical` 필드 추가
+  - 웹사이트 등록/수정 API에서 커스텀 가중치 지원, 합계 1.0 검증
+  - DefacementService에서 사이트별 커스텀 가중치 우선 적용, 미설정 시 글로벌 환경변수 가중치 사용
 
 ### 하이브리드 위변조 탐지 환경변수
 

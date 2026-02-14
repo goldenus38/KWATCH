@@ -7,6 +7,7 @@ interface UseAutoRotationOptions {
   totalPages: number;
   interval?: number;
   enabled?: boolean;
+  paused?: boolean;
 }
 
 interface UseAutoRotationReturn {
@@ -31,6 +32,7 @@ export function useAutoRotation(
     totalPages,
     interval = DEFAULT_AUTO_ROTATE_INTERVAL,
     enabled = true,
+    paused = false,
   } = options;
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -82,7 +84,7 @@ export function useAutoRotation(
 
   // isRotating 또는 totalPages 변경 시 타이머 관리
   useEffect(() => {
-    if (isRotating && totalPages > 1) {
+    if (isRotating && totalPages > 1 && !paused) {
       clearTimer();
       timerRef.current = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % Math.max(totalPages, 1));
@@ -94,7 +96,7 @@ export function useAutoRotation(
     return () => {
       clearTimer();
     };
-  }, [isRotating, totalPages, interval, clearTimer]);
+  }, [isRotating, totalPages, interval, paused, clearTimer]);
 
   // totalPages 변경 시 현재 페이지가 범위를 벗어나면 초기화
   useEffect(() => {

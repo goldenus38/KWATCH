@@ -1,5 +1,62 @@
 # KWATCH 버전 이력
 
+## v1.4.0 (2026-02-14) — 대시보드 UX 개선 + HTTP 모니터링 강화 + 사이트별 가중치
+
+### 신규 기능
+
+- **DetailPopup 열림 시 자동전환 일시정지**
+  - `useAutoRotation` 훅에 `paused` prop 추가
+  - 팝업 열린 동안 페이지 자동 로테이션 정지, 닫으면 자동 재개
+
+- **HTTP 리다이렉트 수동 추적**
+  - `redirect: 'follow'` → `redirect: 'manual'`로 전환
+  - 최대 10회 리다이렉트를 직접 따라가며 `finalUrl` 정확 기록
+  - 초과 시 "리다이렉트 횟수 초과 (10회)" 에러 반환
+
+- **DetailPopup HTTP 상태 새로고침**
+  - "HTTP 상태" 라벨 옆 새로고침 아이콘 + 경과시간(초) 표시
+  - POST refresh → 3초 폴링으로 `checkedAt` 변경 감지 (최대 30초)
+  - 상태 갱신 시 응답추이 차트 데이터도 동시 갱신
+
+- **URL 수정 시 즉시 베이스라인/스크린샷 갱신**
+  - 웹사이트 PUT에서 URL 변경 감지 → 기존 베이스라인 전체 비활성화
+  - 즉시 모니터링+스크린샷 큐잉 (새 스크린샷 캡처 후 자동 베이스라인 생성)
+
+- **사이트별 가중치 커스텀 설정**
+  - Prisma: `useCustomWeights`, `customWeightPixel/Structural/Critical` 필드
+  - 웹사이트 등록/수정 API에서 커스텀 가중치 지원, 합계 1.0 검증
+  - DefacementService에서 사이트별 가중치 우선 적용
+
+### 개선사항
+
+- **브라우저 유사 헤더**: `KWATCH/1.0` UA → Chrome UA + Accept/Accept-Language/Accept-Encoding 추가 (WAF/방화벽 호환성 향상)
+- **DNS/네트워크 일시 오류 재시도**: ENOTFOUND/ECONNRESET/UND_ERR_CONNECT_TIMEOUT 감지 시 2초 대기 후 1회 재시도
+- **한국어 에러 메시지**: "DNS 해석 실패 (hostname)", "연결 시간 초과 (address)", "요청 시간 초과 (N초)"
+
+### 버그 수정
+
+- **monitoringWorker finalUrl 미저장**: `prisma.monitoringResult.create()`에 `finalUrl: result.finalUrl` 누락 수정
+
+### 변경된 파일
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `server/prisma/schema.prisma` | `useCustomWeights`, `customWeightPixel/Structural/Critical` 필드 추가 |
+| `server/src/services/MonitoringService.ts` | 수동 리다이렉트 추적, 브라우저 UA, DNS 재시도, 한국어 에러 메시지 |
+| `server/src/services/DefacementService.ts` | 사이트별 커스텀 가중치 적용 |
+| `server/src/routes/websites.ts` | URL 변경 시 베이스라인 비활성화 + 즉시 큐잉, 커스텀 가중치 API |
+| `server/src/routes/defacement.ts` | recheck 엔드포인트 웹사이트 URL 조회 추가 |
+| `server/src/workers/monitoringWorker.ts` | `finalUrl` DB 저장 추가 |
+| `server/src/types/index.ts` | 커스텀 가중치 타입 추가 |
+| `server/src/__tests__/services/MonitoringService.test.ts` | 에러 메시지 한국어화 반영 |
+| `web/src/hooks/useAutoRotation.ts` | `paused` prop 추가 |
+| `web/src/app/(dashboard)/page.tsx` | `paused: selectedStatus !== null` 전달 |
+| `web/src/components/dashboard/DetailPopup.tsx` | HTTP 상태 새로고침 아이콘 + 차트 갱신 |
+| `web/src/app/(admin)/websites/page.tsx` | 커스텀 가중치 폼 UI |
+| `web/src/types/index.ts` | 커스텀 가중치 타입 추가 |
+
+---
+
 ## v1.3.0 (2026-02-13) — SNS pixel_only + 스크린샷 품질 관리 + 대시보드 UX 개선
 
 ### 신규 기능

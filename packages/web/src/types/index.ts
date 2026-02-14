@@ -81,6 +81,10 @@ export interface Website {
   timeoutSeconds: number;
   isActive: boolean;
   defacementMode: string;
+  useCustomWeights: boolean;
+  customWeightPixel: number | null;
+  customWeightStructural: number | null;
+  customWeightCritical: number | null;
   createdAt: string;
   updatedAt: string;
 }

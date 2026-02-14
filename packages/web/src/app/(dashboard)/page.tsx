@@ -73,6 +73,7 @@ export default function DashboardPage() {
     totalPages,
     interval: autoRotateInterval,
     enabled: true,
+    paused: selectedStatus !== null,
   });
 
   // WebSocket 연결

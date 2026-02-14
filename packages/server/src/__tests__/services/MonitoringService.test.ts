@@ -39,7 +39,7 @@ describe('MonitoringService', () => {
 
       expect(result.isUp).toBe(false);
       expect(result.statusCode).toBeNull();
-      expect(result.errorMessage).toContain('timeout');
+      expect(result.errorMessage).toContain('시간 초과');
     });
 
     it('should return down on network error', async () => {

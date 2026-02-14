@@ -145,6 +145,10 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
       timeoutSeconds,
       ignoreSelectors,
       defacementMode,
+      useCustomWeights,
+      customWeightPixel,
+      customWeightStructural,
+      customWeightCritical,
     } = req.body as WebsiteCreateInput;
     const prisma = getDbClient();
 
@@ -213,6 +217,15 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
     }
     const resolvedDefacementMode = defacementMode || 'auto';
 
+    // 가중치 합계 검증
+    if (useCustomWeights) {
+      const sum = (customWeightPixel ?? 0) + (customWeightStructural ?? 0) + (customWeightCritical ?? 0);
+      if (Math.abs(sum - 1.0) > 0.01) {
+        sendError(res, 'INVALID_WEIGHTS', '가중치 합계는 1.0이어야 합니다.', 400);
+        return;
+      }
+    }
+
     // 웹사이트 등록
     const newWebsite = await prisma.website.create({
       data: {
@@ -226,6 +239,10 @@ router.post('/', authenticate, authorize('admin', 'analyst'), async (req, res) =
         isActive: true,
         ...(ignoreSelectors && { ignoreSelectors }),
         defacementMode: resolvedDefacementMode,
+        ...(useCustomWeights !== undefined && { useCustomWeights }),
+        ...(customWeightPixel !== undefined && { customWeightPixel }),
+        ...(customWeightStructural !== undefined && { customWeightStructural }),
+        ...(customWeightCritical !== undefined && { customWeightCritical }),
       },
       include: {
         category: true,
@@ -365,6 +382,15 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
       return;
     }
 
+    // 가중치 합계 검증
+    if (updates.useCustomWeights) {
+      const sum = (updates.customWeightPixel ?? 0) + (updates.customWeightStructural ?? 0) + (updates.customWeightCritical ?? 0);
+      if (Math.abs(sum - 1.0) > 0.01) {
+        sendError(res, 'INVALID_WEIGHTS', '가중치 합계는 1.0이어야 합니다.', 400);
+        return;
+      }
+    }
+
     // 웹사이트 수정
     const updatedWebsite = await prisma.website.update({
       where: { id: websiteId },
@@ -379,6 +405,10 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
         ...(updates.isActive !== undefined && { isActive: updates.isActive }),
         ...(updates.ignoreSelectors !== undefined && { ignoreSelectors: updates.ignoreSelectors }),
         ...(updates.defacementMode !== undefined && { defacementMode: updates.defacementMode }),
+        ...(updates.useCustomWeights !== undefined && { useCustomWeights: updates.useCustomWeights }),
+        ...(updates.customWeightPixel !== undefined && { customWeightPixel: updates.customWeightPixel }),
+        ...(updates.customWeightStructural !== undefined && { customWeightStructural: updates.customWeightStructural }),
+        ...(updates.customWeightCritical !== undefined && { customWeightCritical: updates.customWeightCritical }),
       },
       include: {
         category: true,
@@ -386,6 +416,24 @@ router.put('/:id', authenticate, authorize('admin', 'analyst'), async (req, res)
     });
 
     logger.info(`웹사이트 수정 완료: ${websiteId}`);
+
+    // URL 변경 시 기존 베이스라인 비활성화 + 즉시 모니터링/스크린샷 큐잉
+    if (updates.url && updates.url !== existingWebsite.url) {
+      await prisma.defacementBaseline.updateMany({
+        where: { websiteId, isActive: true },
+        data: { isActive: false },
+      });
+      logger.info(`웹사이트 ${websiteId} URL 변경 감지 — 기존 베이스라인 비활성화`);
+
+      schedulerService.enqueueMonitoringCheck(updatedWebsite).catch((err) => {
+        logger.error(`URL 변경 후 모니터링 큐잉 실패:`, err);
+      });
+      schedulerService.enqueueScreenshot(
+        { id: updatedWebsite.id, url: updatedWebsite.url }, true,
+      ).catch((err) => {
+        logger.error(`URL 변경 후 스크린샷 큐잉 실패:`, err);
+      });
+    }
 
     // 스케줄 갱신 (활성 상태 변경 또는 체크 주기 변경 반영)
     if (updatedWebsite.isActive) {

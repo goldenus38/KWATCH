@@ -100,6 +100,8 @@ export function DetailPopup({
   const [baselineElapsed, setBaselineElapsed] = useState(0);
   const [isDefacementRechecking, setIsDefacementRechecking] = useState(false);
   const [defacementElapsed, setDefacementElapsed] = useState(0);
+  const [isHttpRefreshing, setIsHttpRefreshing] = useState(false);
+  const [httpElapsed, setHttpElapsed] = useState(0);
   const [monitoringHistory, setMonitoringHistory] = useState<MonitoringResult[]>([]);
   const [latestDefacement, setLatestDefacement] = useState<DefacementCheckData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
@@ -351,6 +353,75 @@ export function DetailPopup({
     setTimeout(poll, 3000);
   };
 
+  /**
+   * 응답 추이 차트 데이터 새로고침 헬퍼
+   */
+  const refreshChartData = async () => {
+    if (!websiteId) return;
+    const historyRes = await api.get<MonitoringResult[]>(`/api/monitoring/${websiteId}?limit=48`);
+    if (historyRes.success && historyRes.data) {
+      setMonitoringHistory(historyRes.data);
+    }
+  };
+
+  /**
+   * HTTP 상태 새로고침 핸들러
+   * POST /api/monitoring/:websiteId/refresh → 폴링으로 상태 갱신 감지
+   */
+  const handleHttpRefresh = async () => {
+    if (!websiteId || isHttpRefreshing) return;
+    setIsHttpRefreshing(true);
+    setHttpElapsed(0);
+
+    const prevCheckedAt = localStatus?.checkedAt || '';
+
+    try {
+      await api.post(`/api/monitoring/${websiteId}/refresh`);
+    } catch (e) {
+      console.error('[DetailPopup] HTTP refresh failed:', e);
+      setIsHttpRefreshing(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setHttpElapsed((prev) => prev + 1);
+    }, 1000);
+
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const poll = async () => {
+      attempts++;
+      const statusRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
+
+      if (statusRes.success && statusRes.data) {
+        const newCheckedAt = statusRes.data.checkedAt;
+        if (newCheckedAt && String(newCheckedAt) !== String(prevCheckedAt)) {
+          clearInterval(timer);
+          setLocalStatus(statusRes.data);
+          await refreshChartData();
+          setIsHttpRefreshing(false);
+          setHttpElapsed(0);
+          return;
+        }
+      }
+
+      if (attempts < maxAttempts) {
+        setTimeout(poll, 3000);
+      } else {
+        clearInterval(timer);
+        if (statusRes.success && statusRes.data) {
+          setLocalStatus(statusRes.data);
+        }
+        await refreshChartData();
+        setIsHttpRefreshing(false);
+        setHttpElapsed(0);
+      }
+    };
+
+    setTimeout(poll, 3000);
+  };
+
   if (!websiteId) return null;
 
   // 차트 데이터 (최신 → 오래된 순을 뒤집어서 시간순 정렬)
@@ -516,8 +587,25 @@ export function DetailPopup({
                     )}
                   </div>
                   <div>
-                    <div className="text-dashboard-sm text-kwatch-text-secondary">
+                    <div className="text-dashboard-sm text-kwatch-text-secondary flex items-center gap-1.5">
                       HTTP 상태
+                      <button
+                        onClick={handleHttpRefresh}
+                        disabled={isHttpRefreshing}
+                        className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors ${isHttpRefreshing ? 'animate-spin text-kwatch-accent' : ''}`}
+                        title="HTTP 상태 새로고침"
+                        aria-label="HTTP 상태 새로고침"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                          <path d="M3 3v5h5"/>
+                          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                          <path d="M16 16h5v5"/>
+                        </svg>
+                      </button>
+                      {isHttpRefreshing && httpElapsed > 0 && (
+                        <span className="text-xs text-kwatch-accent animate-pulse">{httpElapsed}초</span>
+                      )}
                     </div>
                     <div className="text-dashboard-base font-semibold">
                       {localStatus?.isUp ? (
@@ -725,11 +813,11 @@ export function DetailPopup({
                   {latestDefacement && (
                     <>
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        localStatus?.defacementMode === 'auto'
+                        latestDefacement?.detectionDetails
                           ? 'bg-kwatch-accent/20 text-kwatch-accent'
                           : 'bg-kwatch-bg-tertiary text-kwatch-text-secondary'
                       }`}>
-                        {localStatus?.defacementMode === 'auto' ? '자동 (하이브리드)' : '픽셀 전용'}
+                        {latestDefacement?.detectionDetails ? '하이브리드' : '픽셀 전용'}
                       </span>
                       <span className="text-dashboard-sm font-normal text-kwatch-text-secondary">
                         종합 유사도: {latestDefacement.htmlSimilarityScore != null || latestDefacement.similarityScore != null

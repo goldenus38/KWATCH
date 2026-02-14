@@ -43,15 +43,63 @@ function getConsecutiveFailures(results: { isUp: boolean }[]): number {
 export class MonitoringService {
   private prisma = getDbClient();
 
+  private static readonly BROWSER_HEADERS: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate',
+  };
+
+  private static readonly MAX_REDIRECTS = 10;
+
+  /**
+   * 리다이렉트를 수동 추적하며 HTTP 요청을 수행합니다
+   * @returns { response, finalUrl, redirectCount }
+   */
+  private async fetchWithManualRedirect(
+    url: string,
+    method: 'HEAD' | 'GET',
+    controller: AbortController,
+  ): Promise<{ response: Response; finalUrl: string; redirectCount: number }> {
+    let currentUrl = url;
+    let redirectCount = 0;
+    let response: Response | null = null;
+
+    while (redirectCount <= MonitoringService.MAX_REDIRECTS) {
+      response = await fetch(currentUrl, {
+        method,
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: MonitoringService.BROWSER_HEADERS,
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) break;
+        currentUrl = new URL(location, currentUrl).href;
+        redirectCount++;
+        continue;
+      }
+      break;
+    }
+
+    return { response: response!, finalUrl: currentUrl, redirectCount };
+  }
+
   /**
    * 단일 웹사이트의 HTTP 상태를 확인합니다
+   * - 리다이렉트를 수동 추적 (최대 10회)하여 finalUrl 정확 기록
+   * - 브라우저 유사 헤더로 WAF/방화벽 호환성 향상
+   * - DNS/네트워크 일시 오류 시 1회 재시도
    * @param url 확인할 웹사이트 URL
    * @param timeoutSeconds 타임아웃 시간 (초)
-   * @returns 상태 정보 {statusCode, responseTimeMs, isUp, errorMessage}
+   * @param isRetry 재시도 여부 (내부용)
+   * @returns 상태 정보 {statusCode, responseTimeMs, isUp, errorMessage, finalUrl}
    */
   async checkWebsite(
     url: string,
     timeoutSeconds: number = config.monitoring.defaultTimeout,
+    isRetry: boolean = false,
   ): Promise<{
     statusCode: number | null;
     responseTimeMs: number;
@@ -65,16 +113,24 @@ export class MonitoringService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
-      let response = await fetch(url, {
-        method: 'HEAD',
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: {
-          'User-Agent': 'KWATCH/1.0 (+http://example.com)',
-        },
-      });
+      // HEAD 요청 + 수동 리다이렉트 추적
+      let { response, finalUrl, redirectCount } = await this.fetchWithManualRedirect(
+        url, 'HEAD', controller,
+      );
 
-      // HEAD 요청이 비-2xx면 GET으로 fallback (많은 서버가 HEAD를 차단)
+      // 리다이렉트 횟수 초과
+      if (redirectCount > MonitoringService.MAX_REDIRECTS) {
+        clearTimeout(timeoutId);
+        return {
+          statusCode: null,
+          responseTimeMs: Date.now() - startTime,
+          isUp: false,
+          errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
+          finalUrl,
+        };
+      }
+
+      // HEAD 4xx → GET fallback (많은 서버가 HEAD를 차단)
       if (response.status >= 400) {
         const fallbackController = new AbortController();
         const fallbackTimeoutId = setTimeout(
@@ -82,14 +138,23 @@ export class MonitoringService {
           timeoutSeconds * 1000,
         );
 
-        response = await fetch(url, {
-          method: 'GET',
-          signal: fallbackController.signal,
-          redirect: 'follow',
-          headers: {
-            'User-Agent': 'KWATCH/1.0 (+http://example.com)',
-          },
-        });
+        const getResult = await this.fetchWithManualRedirect(
+          url, 'GET', fallbackController,
+        );
+        response = getResult.response;
+        finalUrl = getResult.finalUrl;
+
+        if (getResult.redirectCount > MonitoringService.MAX_REDIRECTS) {
+          clearTimeout(timeoutId);
+          clearTimeout(fallbackTimeoutId);
+          return {
+            statusCode: null,
+            responseTimeMs: Date.now() - startTime,
+            isUp: false,
+            errorMessage: `리다이렉트 횟수 초과 (${MonitoringService.MAX_REDIRECTS}회)`,
+            finalUrl,
+          };
+        }
 
         clearTimeout(fallbackTimeoutId);
       }
@@ -105,17 +170,39 @@ export class MonitoringService {
         responseTimeMs,
         isUp,
         errorMessage: null,
-        finalUrl: response.url || null,
+        finalUrl,
       };
     } catch (error: unknown) {
       const responseTimeMs = Date.now() - startTime;
+
+      // DNS/네트워크 일시 오류 시 1회 재시도
+      const cause = (error as any)?.cause;
+      const causeCode = cause?.code as string | undefined;
+      const isTransient = causeCode === 'ENOTFOUND'
+        || causeCode === 'ECONNRESET'
+        || causeCode === 'UND_ERR_CONNECT_TIMEOUT';
+
+      if (isTransient && !isRetry) {
+        logger.info(`Transient error for ${url} (${causeCode}), retrying once...`);
+        await new Promise(r => setTimeout(r, 2000));
+        return this.checkWebsite(url, timeoutSeconds, true);
+      }
+
       let errorMessage = 'Unknown error';
 
       if (error instanceof Error) {
-        const cause = (error as any).cause;
-        errorMessage = cause?.message || cause?.code || error.message;
         if (error.name === 'AbortError') {
-          errorMessage = `Request timeout (${timeoutSeconds}s)`;
+          errorMessage = `요청 시간 초과 (${timeoutSeconds}초)`;
+        } else if (causeCode === 'ENOTFOUND') {
+          const hostname = cause?.hostname || new URL(url).hostname;
+          errorMessage = `DNS 해석 실패 (${hostname})`;
+        } else if (causeCode === 'UND_ERR_CONNECT_TIMEOUT') {
+          const address = cause?.address || '';
+          errorMessage = address
+            ? `연결 시간 초과 (${address})`
+            : '연결 시간 초과';
+        } else {
+          errorMessage = cause?.message || cause?.code || error.message;
         }
       }
 

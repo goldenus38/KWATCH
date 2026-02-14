@@ -63,6 +63,10 @@ export interface WebsiteCreateInput {
   timeoutSeconds?: number;
   ignoreSelectors?: string[];
   defacementMode?: string;
+  useCustomWeights?: boolean;
+  customWeightPixel?: number;
+  customWeightStructural?: number;
+  customWeightCritical?: number;
 }
 
 export interface WebsiteUpdateInput {
@@ -76,6 +80,10 @@ export interface WebsiteUpdateInput {
   isActive?: boolean;
   ignoreSelectors?: string[];
   defacementMode?: string;
+  useCustomWeights?: boolean;
+  customWeightPixel?: number;
+  customWeightStructural?: number;
+  customWeightCritical?: number;
 }
 
 export interface WebsiteFilter {

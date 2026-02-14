@@ -61,6 +61,10 @@ model Website {
   isActive             Boolean  @default(true) @map("is_active")
   ignoreSelectors      Json?    @map("ignore_selectors")
   defacementMode       String   @default("auto") @map("defacement_mode") @db.VarChar(20)
+  useCustomWeights          Boolean  @default(false) @map("use_custom_weights")
+  customWeightPixel         Decimal? @map("custom_weight_pixel") @db.Decimal(3, 2)
+  customWeightStructural    Decimal? @map("custom_weight_structural") @db.Decimal(3, 2)
+  customWeightCritical      Decimal? @map("custom_weight_critical") @db.Decimal(3, 2)
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 

@@ -48,6 +48,7 @@ export async function initMonitoringWorker(): Promise<Worker<MonitoringJobData>>
             responseTimeMs: result.responseTimeMs,
             isUp: result.isUp,
             errorMessage: result.errorMessage,
+            finalUrl: result.finalUrl,
           },
         });
 

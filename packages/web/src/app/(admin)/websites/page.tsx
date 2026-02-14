@@ -18,6 +18,10 @@ interface WebsiteFormData {
   checkIntervalSeconds: number;
   timeoutSeconds: number;
   defacementMode: string;
+  useCustomWeights: boolean;
+  customWeightPixel: number;
+  customWeightStructural: number;
+  customWeightCritical: number;
 }
 
 interface BulkRow {
@@ -62,6 +66,10 @@ export default function WebsitesPage() {
     checkIntervalSeconds: 300,
     timeoutSeconds: 60,
     defacementMode: 'auto',
+    useCustomWeights: false,
+    customWeightPixel: 0.6,
+    customWeightStructural: 0.2,
+    customWeightCritical: 0.2,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -228,6 +236,13 @@ export default function WebsitesPage() {
         checkIntervalSeconds: formData.checkIntervalSeconds,
         timeoutSeconds: formData.timeoutSeconds,
         defacementMode: formData.defacementMode,
+        ...(formData.useCustomWeights && {
+          useCustomWeights: true,
+          customWeightPixel: formData.customWeightPixel,
+          customWeightStructural: formData.customWeightStructural,
+          customWeightCritical: formData.customWeightCritical,
+        }),
+        ...(!formData.useCustomWeights && { useCustomWeights: false }),
       };
 
       const response = await api.post<Website>('/api/websites', payload);
@@ -274,6 +289,13 @@ export default function WebsitesPage() {
         checkIntervalSeconds: formData.checkIntervalSeconds,
         timeoutSeconds: formData.timeoutSeconds,
         defacementMode: formData.defacementMode,
+        ...(formData.useCustomWeights && {
+          useCustomWeights: true,
+          customWeightPixel: formData.customWeightPixel,
+          customWeightStructural: formData.customWeightStructural,
+          customWeightCritical: formData.customWeightCritical,
+        }),
+        ...(!formData.useCustomWeights && { useCustomWeights: false }),
       };
 
       const response = await api.put<Website>(
@@ -336,6 +358,10 @@ export default function WebsitesPage() {
       checkIntervalSeconds: 300,
       timeoutSeconds: 60,
       defacementMode: 'auto',
+      useCustomWeights: false,
+      customWeightPixel: 0.6,
+      customWeightStructural: 0.2,
+      customWeightCritical: 0.2,
     });
     setEditingWebsite(null);
   };
@@ -356,6 +382,10 @@ export default function WebsitesPage() {
       checkIntervalSeconds: website.checkIntervalSeconds,
       timeoutSeconds: website.timeoutSeconds,
       defacementMode: website.defacementMode || 'auto',
+      useCustomWeights: website.useCustomWeights || false,
+      customWeightPixel: website.customWeightPixel ?? 0.6,
+      customWeightStructural: website.customWeightStructural ?? 0.2,
+      customWeightCritical: website.customWeightCritical ?? 0.2,
     });
     setShowModal(true);
   };
@@ -915,6 +945,120 @@ export default function WebsitesPage() {
                   </p>
                 </div>
               </div>
+
+              {/* 사이트별 가중치 설정 */}
+              {formData.defacementMode !== 'pixel_only' && (
+                <div className="border border-kwatch-bg-tertiary rounded-md p-4 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.useCustomWeights}
+                      onChange={(e) =>
+                        setFormData({ ...formData, useCustomWeights: e.target.checked })
+                      }
+                      disabled={isSubmitting}
+                      className="rounded border-kwatch-bg-tertiary"
+                    />
+                    <span className="text-sm font-medium text-kwatch-text-primary">
+                      사이트별 가중치 설정 사용
+                    </span>
+                  </label>
+
+                  {formData.useCustomWeights && (
+                    <div className="space-y-3 pt-2">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs text-kwatch-text-secondary mb-1">
+                            픽셀 비교
+                          </label>
+                          <input
+                            type="number"
+                            value={formData.customWeightPixel}
+                            onChange={(e) =>
+                              setFormData({ ...formData, customWeightPixel: parseFloat(e.target.value) || 0 })
+                            }
+                            disabled={isSubmitting}
+                            className="w-full px-3 py-1.5 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-kwatch-text-secondary mb-1">
+                            HTML 구조
+                          </label>
+                          <input
+                            type="number"
+                            value={formData.customWeightStructural}
+                            onChange={(e) =>
+                              setFormData({ ...formData, customWeightStructural: parseFloat(e.target.value) || 0 })
+                            }
+                            disabled={isSubmitting}
+                            className="w-full px-3 py-1.5 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-kwatch-text-secondary mb-1">
+                            도메인 감사
+                          </label>
+                          <input
+                            type="number"
+                            value={formData.customWeightCritical}
+                            onChange={(e) =>
+                              setFormData({ ...formData, customWeightCritical: parseFloat(e.target.value) || 0 })
+                            }
+                            disabled={isSubmitting}
+                            className="w-full px-3 py-1.5 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 합계 표시 */}
+                      {(() => {
+                        const sum = formData.customWeightPixel + formData.customWeightStructural + formData.customWeightCritical;
+                        const isValid = Math.abs(sum - 1.0) <= 0.01;
+                        return (
+                          <div className={`text-xs ${isValid ? 'text-kwatch-status-normal' : 'text-kwatch-status-critical'}`}>
+                            합계: {sum.toFixed(1)} {isValid ? '\u2713' : '\u2717 (1.0이어야 합니다)'}
+                          </div>
+                        );
+                      })()}
+
+                      {/* 프리셋 버튼 */}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, customWeightPixel: 0.6, customWeightStructural: 0.2, customWeightCritical: 0.2 })}
+                          className="px-2 py-1 text-xs border border-kwatch-bg-tertiary rounded text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary transition-colors"
+                        >
+                          기본값
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, customWeightPixel: 0.0, customWeightStructural: 0.5, customWeightCritical: 0.5 })}
+                          className="px-2 py-1 text-xs border border-kwatch-bg-tertiary rounded text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary transition-colors"
+                        >
+                          동영상 사이트
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, customWeightPixel: 0.8, customWeightStructural: 0.1, customWeightCritical: 0.1 })}
+                          className="px-2 py-1 text-xs border border-kwatch-bg-tertiary rounded text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary transition-colors"
+                        >
+                          정적 사이트
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-kwatch-text-primary mb-1">

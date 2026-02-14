@@ -78,7 +78,11 @@ export class DefacementService {
       // 사이트별 설정 조회 (defacementMode, ignoreSelectors)
       const website = await this.prisma.website.findUnique({
         where: { id: websiteId },
-        select: { url: true, ignoreSelectors: true, defacementMode: true },
+        select: {
+          url: true, ignoreSelectors: true, defacementMode: true,
+          useCustomWeights: true, customWeightPixel: true,
+          customWeightStructural: true, customWeightCritical: true,
+        },
       });
       const forcePixelOnly = website?.defacementMode === 'pixel_only';
 
@@ -120,8 +124,17 @@ export class DefacementService {
         }
       }
 
-      // 하이브리드 점수 계산
-      const weights = config.monitoring.hybridWeights;
+      // 하이브리드 점수 계산 (사이트별 가중치 우선)
+      const weights = (website?.useCustomWeights &&
+        website.customWeightPixel != null &&
+        website.customWeightStructural != null &&
+        website.customWeightCritical != null)
+        ? {
+            pixel: Number(website.customWeightPixel),
+            structural: Number(website.customWeightStructural),
+            critical: Number(website.customWeightCritical),
+          }
+        : config.monitoring.hybridWeights;
       if (detectionMethod === 'hybrid') {
         hybridScore = pixelScore * weights.pixel + structuralScore * weights.structural + criticalElementsScore * weights.critical;
       } else {

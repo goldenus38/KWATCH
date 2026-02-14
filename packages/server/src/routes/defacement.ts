@@ -122,6 +122,17 @@ router.post('/:websiteId/recheck', authenticate, async (req, res) => {
       return;
     }
 
+    // 웹사이트 URL 조회
+    const website = await prisma.website.findUnique({
+      where: { id: siteId },
+      select: { url: true },
+    });
+
+    if (!website) {
+      sendError(res, 'NOT_FOUND', '웹사이트를 찾을 수 없습니다.', 404);
+      return;
+    }
+
     // 최신 스크린샷 조회
     const latestScreenshot = await prisma.screenshot.findFirst({
       where: { websiteId: siteId },
@@ -143,12 +154,27 @@ router.post('/:websiteId/recheck', authenticate, async (req, res) => {
       return;
     }
 
+    // HTML 페이지 fetch (하이브리드 탐지용)
+    let htmlContent: string | undefined;
+    try {
+      const response = await fetch(website.url, {
+        signal: AbortSignal.timeout(10000),
+        headers: { 'User-Agent': 'KWATCH/1.0' },
+      });
+      if (response.ok) {
+        htmlContent = await response.text();
+      }
+    } catch {
+      // HTML fetch 실패 시 pixel_only로 fallback (무시)
+    }
+
     // 위변조 재분석 큐에 등록
     const { schedulerService } = await import('../services/SchedulerService');
     await schedulerService.enqueueDefacementCheck(
       siteId,
       latestScreenshot.id,
       activeBaseline.id,
+      htmlContent,
     );
 
     sendSuccess(res, {
