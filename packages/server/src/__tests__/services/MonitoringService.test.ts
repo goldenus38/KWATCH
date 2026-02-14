@@ -74,14 +74,14 @@ describe('MonitoringService', () => {
       prismaMock.$queryRaw.mockResolvedValueOnce([
         // up site
         {
-          id: 1, name: 'Site A', url: 'https://a.com', organization_name: '테스트기관A',
+          id: 1, name: 'Site A', url: 'https://a.com', organization_name: '테스트기관A', defacement_mode: 'auto',
           monitoring_results: [{ is_up: true, response_time_ms: 100, checked_at: now.toISOString(), final_url: 'https://a.com' }],
           screenshots: null,
           defacement_checks: null,
         },
         // down site (5 consecutive failures required)
         {
-          id: 2, name: 'Site B', url: 'https://b.com', organization_name: '테스트기관B',
+          id: 2, name: 'Site B', url: 'https://b.com', organization_name: '테스트기관B', defacement_mode: 'auto',
           monitoring_results: [
             { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
             { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
@@ -94,14 +94,14 @@ describe('MonitoringService', () => {
         },
         // warning (slow) site — response time exceeds 100000ms threshold
         {
-          id: 3, name: 'Site C', url: 'https://c.com', organization_name: null,
+          id: 3, name: 'Site C', url: 'https://c.com', organization_name: null, defacement_mode: 'pixel_only',
           monitoring_results: [{ is_up: true, response_time_ms: 150000, checked_at: now.toISOString(), final_url: 'https://c.com/redirected' }],
           screenshots: null,
           defacement_checks: null,
         },
         // defaced site (3 consecutive detections required)
         {
-          id: 4, name: 'Site D', url: 'https://d.com', organization_name: '테스트기관D',
+          id: 4, name: 'Site D', url: 'https://d.com', organization_name: '테스트기관D', defacement_mode: 'auto',
           monitoring_results: [{ is_up: true, response_time_ms: 200, checked_at: now.toISOString(), final_url: 'https://d.com' }],
           screenshots: null,
           defacement_checks: [
@@ -112,7 +112,7 @@ describe('MonitoringService', () => {
         },
         // unknown site (no results)
         {
-          id: 5, name: 'Site E', url: 'https://e.com', organization_name: null,
+          id: 5, name: 'Site E', url: 'https://e.com', organization_name: null, defacement_mode: 'auto',
           monitoring_results: null,
           screenshots: null,
           defacement_checks: null,
@@ -147,13 +147,13 @@ describe('MonitoringService', () => {
       // Raw SQL returns snake_case columns with json_agg sub-arrays
       prismaMock.$queryRaw.mockResolvedValueOnce([
         {
-          id: 1, name: 'Site A', url: 'https://a.com', organization_name: '기관A',
+          id: 1, name: 'Site A', url: 'https://a.com', organization_name: '기관A', defacement_mode: 'auto',
           monitoring_results: [{ status_code: 200, response_time_ms: 50, is_up: true, error_message: null, checked_at: now.toISOString(), final_url: 'https://a.com/' }],
-          screenshots: [{ id: 10, captured_at: now.toISOString() }],
+          screenshots: [{ id: 10, capturedAt: now.toISOString() }],
           defacement_checks: null,
         },
         {
-          id: 2, name: 'Site B', url: 'https://b.com', organization_name: null,
+          id: 2, name: 'Site B', url: 'https://b.com', organization_name: null, defacement_mode: 'pixel_only',
           monitoring_results: null,
           screenshots: null,
           defacement_checks: null,
@@ -170,11 +170,15 @@ describe('MonitoringService', () => {
       expect(statuses[0].finalUrl).toBe('https://a.com/');
       expect(statuses[0].screenshotUrl).toBe('/api/screenshots/image/10');
       expect(statuses[0].thumbnailUrl).toBe('/api/screenshots/thumbnail/10');
+      expect(statuses[0].screenshotCapturedAt).toBeTruthy();
+      expect(statuses[0].defacementMode).toBe('auto');
       expect(statuses[1].isUp).toBe(false);
       expect(statuses[1].organizationName).toBeNull();
       expect(statuses[1].finalUrl).toBeNull();
       expect(statuses[1].screenshotUrl).toBeNull();
       expect(statuses[1].thumbnailUrl).toBeNull();
+      expect(statuses[1].screenshotCapturedAt).toBeNull();
+      expect(statuses[1].defacementMode).toBe('pixel_only');
     });
   });
 });

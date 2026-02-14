@@ -192,6 +192,8 @@ export class MonitoringService {
         checkedAt: latestResult?.checkedAt ?? new Date(),
         screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
         thumbnailUrl: latestScreenshot ? `/api/screenshots/thumbnail/${latestScreenshot.id}` : null,
+        screenshotCapturedAt: latestScreenshot?.capturedAt ?? null,
+        defacementMode: website.defacementMode,
         defacementStatus: latestDefacement
           ? {
               isDefaced,
@@ -235,12 +237,13 @@ export class MonitoringService {
           w.name,
           w.url,
           w.organization_name,
+          w.defacement_mode,
           (SELECT json_agg(sub) FROM (
             SELECT status_code, response_time_ms, is_up, error_message, checked_at, final_url
             FROM monitoring_results WHERE website_id = w.id ORDER BY checked_at DESC LIMIT ${CONSECUTIVE_FAILURE_THRESHOLD}
           ) sub) as monitoring_results,
           (SELECT json_agg(sub) FROM (
-            SELECT id, captured_at FROM screenshots WHERE website_id = w.id ORDER BY captured_at DESC LIMIT 1
+            SELECT id, captured_at AS "capturedAt" FROM screenshots WHERE website_id = w.id ORDER BY captured_at DESC LIMIT 1
           ) sub) as screenshots,
           (SELECT json_agg(sub) FROM (
             SELECT is_defaced, similarity_score, html_similarity_score, checked_at
@@ -309,6 +312,8 @@ export class MonitoringService {
           checkedAt: latestResult ? new Date(latestResult.checked_at) : new Date(),
           screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
           thumbnailUrl: latestScreenshot ? `/api/screenshots/thumbnail/${latestScreenshot.id}` : null,
+          screenshotCapturedAt: latestScreenshot?.capturedAt ? new Date(latestScreenshot.capturedAt) : null,
+          defacementMode: row.defacement_mode,
           defacementStatus: latestDefacement
             ? {
                 isDefaced,

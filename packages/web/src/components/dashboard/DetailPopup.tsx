@@ -391,7 +391,7 @@ export function DetailPopup({
               {localStatus?.organizationName ? `${localStatus.organizationName} ${websiteName}` : websiteName}
             </h2>
             <button
-              onClick={() => { onClose(); router.push(`/websites?search=${encodeURIComponent(websiteName)}`); }}
+              onClick={() => { onClose(); router.push(`/websites?search=${encodeURIComponent(localStatus?.organizationName ? `${localStatus.organizationName} ${websiteName}` : websiteName)}`); }}
               className="text-kwatch-text-muted hover:text-kwatch-accent transition-colors"
               title="사이트 관리로 이동"
               aria-label="사이트 관리로 이동"
@@ -455,6 +455,9 @@ export function DetailPopup({
                   </button>
                   {isScreenshotRefreshing && screenshotElapsed > 0 && (
                     <span className="text-xs text-kwatch-accent animate-pulse font-normal">{screenshotElapsed}초</span>
+                  )}
+                  {!isScreenshotRefreshing && localStatus?.screenshotCapturedAt && (
+                    <span className="text-xs text-kwatch-text-muted font-normal">{formatDateTime(localStatus.screenshotCapturedAt)}</span>
                   )}
                 </h3>
                 <div className="bg-black rounded-lg overflow-hidden w-full h-96">
@@ -718,11 +721,11 @@ export function DetailPopup({
                   {latestDefacement && (
                     <>
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        latestDefacement.htmlSimilarityScore != null
+                        localStatus?.defacementMode === 'auto'
                           ? 'bg-kwatch-accent/20 text-kwatch-accent'
                           : 'bg-kwatch-bg-tertiary text-kwatch-text-secondary'
                       }`}>
-                        {latestDefacement.htmlSimilarityScore != null ? '하이브리드' : '픽셀 전용'}
+                        {localStatus?.defacementMode === 'auto' ? '자동 (하이브리드)' : '픽셀 전용'}
                       </span>
                       <span className="text-dashboard-sm font-normal text-kwatch-text-secondary">
                         종합 유사도: {latestDefacement.htmlSimilarityScore != null || latestDefacement.similarityScore != null
@@ -850,6 +853,9 @@ export function DetailPopup({
                           </button>
                           {isScreenshotRefreshing && screenshotElapsed > 0 && (
                             <span className="text-xs text-kwatch-accent animate-pulse">{screenshotElapsed}초</span>
+                          )}
+                          {!isScreenshotRefreshing && localStatus?.screenshotCapturedAt && (
+                            <span className="text-xs text-kwatch-text-muted ml-auto">{formatDateTime(localStatus.screenshotCapturedAt)}</span>
                           )}
                         </div>
                         <div className="h-48 bg-black flex items-center justify-center">
