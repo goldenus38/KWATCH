@@ -48,6 +48,7 @@ export const config = {
       critical: parseFloat(process.env.DEFACEMENT_WEIGHT_CRITICAL || '0.4'),
     },
     htmlAnalysisEnabled: process.env.HTML_ANALYSIS_ENABLED !== 'false',
+    baselineRefreshIntervalDays: parseInt(process.env.BASELINE_REFRESH_INTERVAL_DAYS || '0', 10),
   },
 
   // Alert Channels

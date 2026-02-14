@@ -42,6 +42,7 @@ interface DefacementCheckData {
   detectionDetails: DetectionDetails | null;
   baseline?: {
     screenshotId: string;
+    createdAt: string;
   };
 }
 
@@ -92,9 +93,13 @@ export function DetailPopup({
 }: DetailPopupProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshStatus, setRefreshStatus] = useState('');
   const [localStatus, setLocalStatus] = useState<MonitoringStatus | undefined>(siteStatus);
+  const [isScreenshotRefreshing, setIsScreenshotRefreshing] = useState(false);
+  const [screenshotElapsed, setScreenshotElapsed] = useState(0);
+  const [isBaselineRefreshing, setIsBaselineRefreshing] = useState(false);
+  const [baselineElapsed, setBaselineElapsed] = useState(0);
+  const [isDefacementRechecking, setIsDefacementRechecking] = useState(false);
+  const [defacementElapsed, setDefacementElapsed] = useState(0);
   const [monitoringHistory, setMonitoringHistory] = useState<MonitoringResult[]>([]);
   const [latestDefacement, setLatestDefacement] = useState<DefacementCheckData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
@@ -143,57 +148,44 @@ export function DetailPopup({
     fetchDetails();
   }, [websiteId]);
 
-  const handleRefresh = async () => {
-    if (!websiteId || isRefreshing) return;
-    setIsRefreshing(true);
-    setRefreshStatus('작업 큐 등록 중...');
+  /**
+   * 스크린샷 새로고침 핸들러
+   * POST /api/monitoring/:websiteId/refresh → 폴링으로 스크린샷 갱신 감지
+   */
+  const handleScreenshotRefresh = async () => {
+    if (!websiteId || isScreenshotRefreshing) return;
+    setIsScreenshotRefreshing(true);
+    setScreenshotElapsed(0);
 
-    // 현재 스크린샷 URL 기록 (변경 감지용)
     const prevScreenshotUrl = localStatus?.screenshotUrl || '';
 
     try {
       await api.post(`/api/monitoring/${websiteId}/refresh`);
     } catch (e) {
-      console.error('[DetailPopup] Refresh failed:', e);
-      setIsRefreshing(false);
-      setRefreshStatus('');
+      console.error('[DetailPopup] Screenshot refresh failed:', e);
+      setIsScreenshotRefreshing(false);
       return;
     }
 
-    setRefreshStatus('상태 체크 중...');
-    const startTime = Date.now();
+    // 경과 시간 카운터
+    const timer = setInterval(() => {
+      setScreenshotElapsed((prev) => prev + 1);
+    }, 1000);
 
-    // 폴링: 스크린샷이 갱신될 때까지 3초 간격으로 최대 60초 대기
     let attempts = 0;
     const maxAttempts = 20;
-    const pollInterval = 3000;
-    let monitoringDone = false;
 
     const poll = async () => {
       attempts++;
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
       const statusRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
       const newScreenshotUrl = statusRes.success && statusRes.data ? statusRes.data.screenshotUrl : '';
 
-      // 모니터링 상태 변경 감지
-      if (!monitoringDone && statusRes.success && statusRes.data) {
-        const prevCheckedAt = localStatus?.checkedAt || '';
-        if (statusRes.data.checkedAt && statusRes.data.checkedAt !== prevCheckedAt) {
-          monitoringDone = true;
-          setLocalStatus(statusRes.data);
-          setRefreshStatus(`스크린샷 캡처 대기 중... (${elapsed}초)`);
-        }
-      }
-
-      if (!monitoringDone) {
-        setRefreshStatus(`상태 체크 중... (${elapsed}초)`);
-      } else {
-        setRefreshStatus(`스크린샷 캡처 대기 중... (${elapsed}초)`);
+      if (statusRes.success && statusRes.data) {
+        setLocalStatus(statusRes.data);
       }
 
       if (newScreenshotUrl && newScreenshotUrl !== prevScreenshotUrl) {
-        // 스크린샷이 갱신됨 — 전체 데이터 fetch
-        setRefreshStatus('데이터 갱신 중...');
+        clearInterval(timer);
         const results = await Promise.allSettled([
           api.get<MonitoringResult[]>(`/api/monitoring/${websiteId}?limit=48`),
           api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`),
@@ -209,31 +201,150 @@ export function DetailPopup({
         if (alertsRes.status === 'fulfilled' && alertsRes.value.success && alertsRes.value.data) {
           setRecentAlerts(alertsRes.value.data);
         }
-        if (statusRes.data) {
-          setLocalStatus(statusRes.data);
-        }
         setCacheBuster(Date.now());
-        setRefreshStatus('');
-        setIsRefreshing(false);
+        setIsScreenshotRefreshing(false);
+        setScreenshotElapsed(0);
         return;
       }
 
-      if (statusRes.success && statusRes.data) {
-        setLocalStatus(statusRes.data);
-      }
-
       if (attempts < maxAttempts) {
-        setTimeout(poll, pollInterval);
+        setTimeout(poll, 3000);
       } else {
-        // 타임아웃
+        clearInterval(timer);
         setCacheBuster(Date.now());
-        setRefreshStatus('');
-        setIsRefreshing(false);
+        setIsScreenshotRefreshing(false);
+        setScreenshotElapsed(0);
       }
     };
 
-    // 첫 폴링은 5초 후 시작
     setTimeout(poll, 5000);
+  };
+
+  /**
+   * 베이스라인 교체 핸들러
+   * 현재 스크린샷을 새 베이스라인으로 설정 → 위변조 재분석 트리거 → 결과 폴링
+   */
+  const handleBaselineRefresh = async () => {
+    if (!websiteId || isBaselineRefreshing) return;
+
+    // 스크린샷 URL에서 ID 추출 (/api/screenshots/image/:id)
+    const screenshotUrlPath = localStatus?.screenshotUrl || '';
+    const match = screenshotUrlPath.match(/\/api\/screenshots\/image\/(\d+)/);
+    if (!match) {
+      console.error('[DetailPopup] Cannot extract screenshot ID from URL:', screenshotUrlPath);
+      return;
+    }
+    const screenshotId = match[1];
+
+    setIsBaselineRefreshing(true);
+    setBaselineElapsed(0);
+
+    const timer = setInterval(() => {
+      setBaselineElapsed((prev) => prev + 1);
+    }, 1000);
+
+    const prevCheckedAt = latestDefacement?.checkedAt || '';
+
+    try {
+      // 1. 베이스라인 갱신
+      await api.post(`/api/defacement/${websiteId}/baseline`, { screenshotId });
+
+      // 2. 위변조 재분석 트리거 (새 베이스라인 기준으로 재분석)
+      await api.post(`/api/defacement/${websiteId}/recheck`);
+
+      // 3. 폴링: 새 defacement check 결과 대기
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      const poll = async () => {
+        attempts++;
+        const defacementRes = await api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`);
+
+        if (defacementRes.success && defacementRes.data) {
+          if (defacementRes.data.checkedAt && defacementRes.data.checkedAt !== prevCheckedAt) {
+            clearInterval(timer);
+            setLatestDefacement(defacementRes.data);
+            setCacheBuster(Date.now());
+            setIsBaselineRefreshing(false);
+            setBaselineElapsed(0);
+            return;
+          }
+        }
+
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 3000);
+        } else {
+          // 타임아웃 — 최소한 베이스라인 갱신은 완료됨, 최신 데이터 반영
+          if (defacementRes.success && defacementRes.data) {
+            setLatestDefacement(defacementRes.data);
+          }
+          clearInterval(timer);
+          setCacheBuster(Date.now());
+          setIsBaselineRefreshing(false);
+          setBaselineElapsed(0);
+        }
+      };
+
+      setTimeout(poll, 3000);
+    } catch (e) {
+      console.error('[DetailPopup] Baseline refresh failed:', e);
+      clearInterval(timer);
+      setIsBaselineRefreshing(false);
+      setBaselineElapsed(0);
+    }
+  };
+
+  /**
+   * 위변조 재분석 핸들러
+   * POST /api/defacement/:websiteId/recheck → 폴링으로 결과 갱신 감지
+   */
+  const handleDefacementRecheck = async () => {
+    if (!websiteId || isDefacementRechecking) return;
+    setIsDefacementRechecking(true);
+    setDefacementElapsed(0);
+
+    const prevCheckedAt = latestDefacement?.checkedAt || '';
+
+    try {
+      await api.post(`/api/defacement/${websiteId}/recheck`);
+    } catch (e) {
+      console.error('[DetailPopup] Defacement recheck failed:', e);
+      setIsDefacementRechecking(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setDefacementElapsed((prev) => prev + 1);
+    }, 1000);
+
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const poll = async () => {
+      attempts++;
+      const defacementRes = await api.get<DefacementCheckData>(`/api/defacement/${websiteId}/latest`);
+
+      if (defacementRes.success && defacementRes.data) {
+        if (defacementRes.data.checkedAt && defacementRes.data.checkedAt !== prevCheckedAt) {
+          clearInterval(timer);
+          setLatestDefacement(defacementRes.data);
+          setCacheBuster(Date.now());
+          setIsDefacementRechecking(false);
+          setDefacementElapsed(0);
+          return;
+        }
+      }
+
+      if (attempts < maxAttempts) {
+        setTimeout(poll, 3000);
+      } else {
+        clearInterval(timer);
+        setIsDefacementRechecking(false);
+        setDefacementElapsed(0);
+      }
+    };
+
+    setTimeout(poll, 3000);
   };
 
   if (!websiteId) return null;
@@ -290,23 +401,6 @@ export function DetailPopup({
                 <circle cx="12" cy="12" r="3"/>
               </svg>
             </button>
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors ${isRefreshing ? 'animate-spin text-kwatch-accent' : ''}`}
-              title="즉시 새로고침 (상태체크 + 스크린샷 + 위변조)"
-              aria-label="즉시 새로고침"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                <path d="M3 3v5h5"/>
-                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                <path d="M16 16h5v5"/>
-              </svg>
-            </button>
-            {refreshStatus && (
-              <span className="text-xs text-kwatch-accent animate-pulse">{refreshStatus}</span>
-            )}
           </div>
           <button
             onClick={onClose}
@@ -343,8 +437,25 @@ export function DetailPopup({
             <div className="p-6 space-y-8">
               {/* 1. 현재 스크린샷 */}
               <section>
-                <h3 className="text-dashboard-base font-bold text-kwatch-text-primary mb-3">
+                <h3 className="text-dashboard-base font-bold text-kwatch-text-primary mb-3 flex items-center gap-2">
                   현재 스크린샷
+                  <button
+                    onClick={handleScreenshotRefresh}
+                    disabled={isScreenshotRefreshing}
+                    className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors ${isScreenshotRefreshing ? 'animate-spin text-kwatch-accent' : ''}`}
+                    title="스크린샷 새로고침"
+                    aria-label="스크린샷 새로고침"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                      <path d="M16 16h5v5"/>
+                    </svg>
+                  </button>
+                  {isScreenshotRefreshing && screenshotElapsed > 0 && (
+                    <span className="text-xs text-kwatch-accent animate-pulse font-normal">{screenshotElapsed}초</span>
+                  )}
                 </h3>
                 <div className="bg-black rounded-lg overflow-hidden w-full h-96">
                   {screenshotUrl ? (
@@ -683,8 +794,28 @@ export function DetailPopup({
                     {/* 이미지 비교 그리드 (3컬럼: 베이스라인 | 현재 | 차이분석) */}
                     <div className="grid grid-cols-3 gap-4">
                       <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
-                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
-                          베이스라인 스크린샷
+                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary flex items-center gap-1.5">
+                          베이스라인
+                          <button
+                            onClick={handleBaselineRefresh}
+                            disabled={isBaselineRefreshing || !localStatus?.screenshotUrl}
+                            className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors disabled:opacity-30 ${isBaselineRefreshing ? 'animate-spin text-kwatch-accent' : ''}`}
+                            title="현재 스크린샷을 베이스라인으로 설정"
+                            aria-label="베이스라인 갱신"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                              <path d="M3 3v5h5"/>
+                              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                              <path d="M16 16h5v5"/>
+                            </svg>
+                          </button>
+                          {isBaselineRefreshing && baselineElapsed > 0 && (
+                            <span className="text-xs text-kwatch-accent animate-pulse">{baselineElapsed}초</span>
+                          )}
+                          {!isBaselineRefreshing && latestDefacement?.baseline?.createdAt && (
+                            <span className="text-xs text-kwatch-text-muted ml-auto">{formatDateTime(latestDefacement.baseline.createdAt)}</span>
+                          )}
                         </div>
                         <div className="h-48 bg-black flex items-center justify-center">
                           {baselineScreenshotUrl ? (
@@ -701,8 +832,25 @@ export function DetailPopup({
                         </div>
                       </div>
                       <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
-                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
+                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary flex items-center gap-1.5">
                           현재 스크린샷
+                          <button
+                            onClick={handleScreenshotRefresh}
+                            disabled={isScreenshotRefreshing}
+                            className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors ${isScreenshotRefreshing ? 'animate-spin text-kwatch-accent' : ''}`}
+                            title="스크린샷 새로고침"
+                            aria-label="스크린샷 새로고침"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                              <path d="M3 3v5h5"/>
+                              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                              <path d="M16 16h5v5"/>
+                            </svg>
+                          </button>
+                          {isScreenshotRefreshing && screenshotElapsed > 0 && (
+                            <span className="text-xs text-kwatch-accent animate-pulse">{screenshotElapsed}초</span>
+                          )}
                         </div>
                         <div className="h-48 bg-black flex items-center justify-center">
                           {latestDefacement?.currentScreenshotId ? (
@@ -719,8 +867,28 @@ export function DetailPopup({
                         </div>
                       </div>
                       <div className="bg-kwatch-bg-tertiary/30 rounded overflow-hidden">
-                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary">
+                        <div className="px-3 py-2 text-dashboard-sm text-kwatch-text-secondary border-b border-kwatch-bg-tertiary flex items-center gap-1.5">
                           차이 분석
+                          <button
+                            onClick={handleDefacementRecheck}
+                            disabled={isDefacementRechecking}
+                            className={`text-kwatch-text-muted hover:text-kwatch-accent transition-colors ${isDefacementRechecking ? 'animate-spin text-kwatch-accent' : ''}`}
+                            title="위변조 재분석"
+                            aria-label="위변조 재분석"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                              <path d="M3 3v5h5"/>
+                              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                              <path d="M16 16h5v5"/>
+                            </svg>
+                          </button>
+                          {isDefacementRechecking && defacementElapsed > 0 && (
+                            <span className="text-xs text-kwatch-accent animate-pulse">{defacementElapsed}초</span>
+                          )}
+                          {!isDefacementRechecking && latestDefacement?.checkedAt && (
+                            <span className="text-xs text-kwatch-text-muted ml-auto">{formatDateTime(latestDefacement.checkedAt)}</span>
+                          )}
                         </div>
                         <div className="h-48 bg-black flex items-center justify-center">
                           {diffImageUrl && latestDefacement?.diffImagePath ? (

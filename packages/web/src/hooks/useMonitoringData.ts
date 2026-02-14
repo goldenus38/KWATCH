@@ -59,24 +59,21 @@ export function useMonitoringData(
       }
       setError(null);
 
-      const [summaryRes, statusesRes, alertsRes] = await Promise.all([
-        api.get<DashboardSummary>('/api/monitoring/status'),
-        api.get<MonitoringStatus[]>('/api/monitoring/statuses'),
+      const [statusesRes, alertsRes] = await Promise.all([
+        api.get<{ statuses: MonitoringStatus[]; summary: DashboardSummary & { responseTimeWarningMs?: number } }>('/api/monitoring/statuses'),
         api.get<Alert[]>('/api/alerts?limit=20'),
       ]);
 
-      if (summaryRes.success && summaryRes.data) {
-        setSummary(summaryRes.data);
-        cachedSummary = summaryRes.data;
-        if (summaryRes.data.responseTimeWarningMs != null) {
-          setResponseTimeWarningMs(summaryRes.data.responseTimeWarningMs);
-          cachedResponseTimeWarningMs = summaryRes.data.responseTimeWarningMs;
-        }
-      }
-
       if (statusesRes.success && statusesRes.data) {
-        setStatuses(statusesRes.data);
-        cachedStatuses = statusesRes.data;
+        const { statuses: newStatuses, summary: newSummary } = statusesRes.data;
+        setStatuses(newStatuses);
+        cachedStatuses = newStatuses;
+        setSummary(newSummary);
+        cachedSummary = newSummary;
+        if (newSummary.responseTimeWarningMs != null) {
+          setResponseTimeWarningMs(newSummary.responseTimeWarningMs);
+          cachedResponseTimeWarningMs = newSummary.responseTimeWarningMs;
+        }
       }
 
       if (alertsRes.success && alertsRes.data) {

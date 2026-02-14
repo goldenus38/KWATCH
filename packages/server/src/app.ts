@@ -97,17 +97,19 @@ async function startServer(): Promise<void> {
     const screenshotWorker = await initScreenshotWorker();
     const defacementWorker = await initDefacementWorker();
 
-    // 모든 활성 웹사이트의 모니터링 스케줄
-    logger.info('Scheduling monitoring for all active websites...');
-    await schedulerService.scheduleAllWebsites();
-
-    // 서버 시작
+    // 서버 먼저 시작 (HTTP 요청 즉시 수락)
     const port = config.port;
     httpServer.listen(port, () => {
       logger.info(
         `KWATCH server is running on port ${port} ` +
           `(${config.isDev ? 'development' : 'production'} mode)`,
       );
+    });
+
+    // 모든 활성 웹사이트의 모니터링 스케줄 (백그라운드)
+    logger.info('Scheduling monitoring for all active websites (background)...');
+    schedulerService.scheduleAllWebsites().catch((err) => {
+      logger.error('scheduleAllWebsites failed:', err);
     });
 
     // Graceful Shutdown 핸들러

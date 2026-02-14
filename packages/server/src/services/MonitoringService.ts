@@ -218,157 +218,137 @@ export class MonitoringService {
    * @returns MonitoringStatus 배열
    */
   async getAllStatuses(): Promise<MonitoringStatus[]> {
-    try {
-      const websites = await this.prisma.website.findMany({
-        where: { isActive: true },
-        include: {
-          monitoringResults: {
-            orderBy: { checkedAt: 'desc' },
-            take: CONSECUTIVE_FAILURE_THRESHOLD,
-          },
-          screenshots: {
-            orderBy: { capturedAt: 'desc' },
-            take: 1,
-          },
-          defacementChecks: {
-            orderBy: { checkedAt: 'desc' },
-            take: CONSECUTIVE_DEFACEMENT_THRESHOLD,
-          },
-        },
-      });
+    const result = await this.getAllStatusesWithSummary();
+    return result.statuses;
+  }
 
-      return websites.map((website) => {
-        const results = website.monitoringResults;
+  /**
+   * 모든 활성 웹사이트의 상태 + 대시보드 요약을 1회 Raw SQL로 조회합니다.
+   * Prisma include + take 조합이 499개 사이트에서 100초+ 걸리는 문제를
+   * Raw SQL correlated subquery로 해결 (~18ms).
+   */
+  async getAllStatusesWithSummary(): Promise<{ statuses: MonitoringStatus[]; summary: DashboardSummary }> {
+    try {
+      const rows: any[] = await this.prisma.$queryRaw`
+        SELECT
+          w.id,
+          w.name,
+          w.url,
+          w.organization_name,
+          (SELECT json_agg(sub) FROM (
+            SELECT status_code, response_time_ms, is_up, error_message, checked_at, final_url
+            FROM monitoring_results WHERE website_id = w.id ORDER BY checked_at DESC LIMIT ${CONSECUTIVE_FAILURE_THRESHOLD}
+          ) sub) as monitoring_results,
+          (SELECT json_agg(sub) FROM (
+            SELECT id, captured_at FROM screenshots WHERE website_id = w.id ORDER BY captured_at DESC LIMIT 1
+          ) sub) as screenshots,
+          (SELECT json_agg(sub) FROM (
+            SELECT is_defaced, similarity_score, html_similarity_score, checked_at
+            FROM defacement_checks WHERE website_id = w.id ORDER BY checked_at DESC LIMIT ${CONSECUTIVE_DEFACEMENT_THRESHOLD}
+          ) sub) as defacement_checks
+        FROM websites w
+        WHERE w.is_active = true
+      `;
+
+      let summaryUp = 0;
+      let summaryDown = 0;
+      let summaryWarning = 0;
+      let summaryDefaced = 0;
+      let summaryUnknown = 0;
+      let lastScanAt: Date | null = null;
+
+      const statuses = rows.map((row) => {
+        const results: any[] = row.monitoring_results || [];
         const latestResult = results[0];
-        const latestScreenshot = website.screenshots[0];
-        const defacementChecks = website.defacementChecks;
+        const screenshots: any[] = row.screenshots || [];
+        const latestScreenshot = screenshots[0];
+        const defacementChecks: any[] = row.defacement_checks || [];
         const latestDefacement = defacementChecks[0];
 
-        const consecutiveFailures = getConsecutiveFailures(results);
+        const consecutiveFailures = getConsecutiveFailures(
+          results.map((r: any) => ({ isUp: r.is_up })),
+        );
         const isDown = consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD;
 
         // 연속 위변조 판정
         let consecutiveDefaced = 0;
         for (const check of defacementChecks) {
-          if (check.isDefaced) consecutiveDefaced++;
+          if (check.is_defaced) consecutiveDefaced++;
           else break;
         }
         const isDefaced = consecutiveDefaced >= CONSECUTIVE_DEFACEMENT_THRESHOLD;
 
+        // summary 집계
+        if (isDefaced) summaryDefaced++;
+        if (!latestResult) {
+          summaryUnknown++;
+        } else {
+          const checkedAt = new Date(latestResult.checked_at);
+          if (!lastScanAt || checkedAt > lastScanAt) {
+            lastScanAt = checkedAt;
+          }
+          if (isDown) {
+            summaryDown++;
+          } else if (latestResult.is_up && latestResult.response_time_ms && latestResult.response_time_ms > config.monitoring.responseTimeWarningMs) {
+            summaryWarning++;
+          } else {
+            summaryUp++;
+          }
+        }
+
         return {
-          websiteId: website.id,
-          websiteName: website.name,
-          organizationName: website.organizationName,
-          url: website.url,
-          finalUrl: latestResult?.finalUrl ?? null,
-          statusCode: latestResult?.statusCode ?? null,
-          responseTimeMs: latestResult?.responseTimeMs ?? null,
+          websiteId: row.id,
+          websiteName: row.name,
+          organizationName: row.organization_name,
+          url: row.url,
+          finalUrl: latestResult?.final_url ?? null,
+          statusCode: latestResult?.status_code ?? null,
+          responseTimeMs: latestResult?.response_time_ms ?? null,
           isUp: latestResult ? !isDown : false,
-          errorMessage: latestResult?.errorMessage ?? null,
-          checkedAt: latestResult?.checkedAt ?? new Date(),
+          errorMessage: latestResult?.error_message ?? null,
+          checkedAt: latestResult ? new Date(latestResult.checked_at) : new Date(),
           screenshotUrl: latestScreenshot ? `/api/screenshots/image/${latestScreenshot.id}` : null,
           thumbnailUrl: latestScreenshot ? `/api/screenshots/thumbnail/${latestScreenshot.id}` : null,
           defacementStatus: latestDefacement
             ? {
                 isDefaced,
-                similarityScore: latestDefacement.similarityScore
-                  ? Number(latestDefacement.similarityScore)
+                similarityScore: latestDefacement.similarity_score
+                  ? Number(latestDefacement.similarity_score)
                   : null,
-                htmlSimilarityScore: latestDefacement.htmlSimilarityScore
-                  ? Number(latestDefacement.htmlSimilarityScore)
+                htmlSimilarityScore: latestDefacement.html_similarity_score
+                  ? Number(latestDefacement.html_similarity_score)
                   : null,
-                detectionMethod: latestDefacement.htmlSimilarityScore != null
-                  ? 'hybrid' : 'pixel_only',
+                detectionMethod: (latestDefacement.html_similarity_score != null
+                  ? 'hybrid' : 'pixel_only') as 'hybrid' | 'pixel_only',
               }
             : null,
         };
       });
+
+      const summary: DashboardSummary = {
+        total: rows.length,
+        up: summaryUp,
+        down: summaryDown,
+        warning: summaryWarning,
+        defaced: summaryDefaced,
+        unknown: summaryUnknown,
+        lastScanAt,
+      };
+
+      return { statuses, summary };
     } catch (error) {
-      logger.error('getAllStatuses failed:', error);
+      logger.error('getAllStatusesWithSummary failed:', error);
       throw error;
     }
   }
 
   /**
    * 대시보드용 전체 상태 요약을 조회합니다
-   * 최근 5회 연속 실패 시에만 장애(down)로 카운트
-   * @returns DashboardSummary {total, up, down, warning, defaced, unknown, lastScanAt}
+   * getAllStatusesWithSummary()를 재사용
    */
   async getDashboardSummary(): Promise<DashboardSummary> {
-    try {
-      const websites = await this.prisma.website.findMany({
-        where: { isActive: true },
-        include: {
-          monitoringResults: {
-            orderBy: { checkedAt: 'desc' },
-            take: CONSECUTIVE_FAILURE_THRESHOLD,
-          },
-          defacementChecks: {
-            orderBy: { checkedAt: 'desc' },
-            take: CONSECUTIVE_DEFACEMENT_THRESHOLD,
-          },
-        },
-      });
-
-      let up = 0;
-      let down = 0;
-      let warning = 0;
-      let defaced = 0;
-      let unknown = 0;
-      let lastScanAt: Date | null = null;
-
-      for (const website of websites) {
-        const results = website.monitoringResults;
-        const latestResult = results[0];
-        const defacementChecks = website.defacementChecks;
-
-        // 연속 위변조 판정
-        let consecutiveDefaced = 0;
-        for (const check of defacementChecks) {
-          if (check.isDefaced) consecutiveDefaced++;
-          else break;
-        }
-        if (consecutiveDefaced >= CONSECUTIVE_DEFACEMENT_THRESHOLD) {
-          defaced++;
-        }
-
-        if (!latestResult) {
-          unknown++;
-          continue;
-        }
-
-        if (!lastScanAt || latestResult.checkedAt > lastScanAt) {
-          lastScanAt = latestResult.checkedAt;
-        }
-
-        const consecutiveFailures = getConsecutiveFailures(results);
-        const isDown = consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD;
-
-        if (isDown) {
-          down++;
-        } else if (latestResult.isUp && latestResult.responseTimeMs && latestResult.responseTimeMs > config.monitoring.responseTimeWarningMs) {
-          // 정상 응답이지만 느린 경우만 경고 (실패 시 responseTimeMs는 타임아웃 소요시간이므로 제외)
-          warning++;
-        } else {
-          up++;
-        }
-      }
-
-      const summary: DashboardSummary = {
-        total: websites.length,
-        up,
-        down,
-        warning,
-        defaced,
-        unknown,
-        lastScanAt,
-      };
-
-      return summary;
-    } catch (error) {
-      logger.error('getDashboardSummary failed:', error);
-      throw error;
-    }
+    const result = await this.getAllStatusesWithSummary();
+    return result.summary;
   }
 
   /**

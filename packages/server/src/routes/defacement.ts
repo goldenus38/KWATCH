@@ -109,6 +109,58 @@ router.post('/:websiteId/baseline', authenticate, async (req, res) => {
 });
 
 /**
+ * POST /api/defacement/:websiteId/recheck
+ * 특정 웹사이트의 위변조 재분석을 즉시 트리거
+ */
+router.post('/:websiteId/recheck', authenticate, async (req, res) => {
+  try {
+    const { websiteId } = req.params;
+    const siteId = parseInt(websiteId);
+
+    if (isNaN(siteId)) {
+      sendError(res, 'INVALID_ID', '유효하지 않은 웹사이트 ID입니다.', 400);
+      return;
+    }
+
+    // 최신 스크린샷 조회
+    const latestScreenshot = await prisma.screenshot.findFirst({
+      where: { websiteId: siteId },
+      orderBy: { capturedAt: 'desc' },
+    });
+
+    if (!latestScreenshot) {
+      sendError(res, 'NO_SCREENSHOT', '스크린샷이 없습니다. 먼저 스크린샷을 캡처해주세요.', 400);
+      return;
+    }
+
+    // 활성 베이스라인 조회
+    const activeBaseline = await prisma.defacementBaseline.findFirst({
+      where: { websiteId: siteId, isActive: true },
+    });
+
+    if (!activeBaseline) {
+      sendError(res, 'NO_BASELINE', '베이스라인이 없습니다. 먼저 베이스라인을 설정해주세요.', 400);
+      return;
+    }
+
+    // 위변조 재분석 큐에 등록
+    const { schedulerService } = await import('../services/SchedulerService');
+    await schedulerService.enqueueDefacementCheck(
+      siteId,
+      latestScreenshot.id,
+      activeBaseline.id,
+    );
+
+    sendSuccess(res, {
+      status: 'queued',
+      message: '위변조 재분석이 큐에 등록되었습니다.',
+    }, 202);
+  } catch (error) {
+    sendError(res, 'RECHECK_ERROR', '위변조 재분석 요청 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
  * GET /api/defacement/diff/:checkId
  * 위변조 체크 결과의 차이 이미지 반환
  */

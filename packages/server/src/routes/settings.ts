@@ -404,6 +404,117 @@ router.post('/defacement/persist', authenticate, authorize('admin'), async (req,
 });
 
 /**
+ * POST /api/settings/defacement/baseline-bulk
+ * 모든 활성 사이트의 베이스라인을 최신 스크린샷으로 일괄 교체
+ */
+router.post('/defacement/baseline-bulk', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const prisma = getDbClient();
+    const authReq = req as any;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      sendError(res, 'UNAUTHORIZED', '인증이 필요합니다.', 401);
+      return;
+    }
+
+    // 모든 활성 웹사이트 조회
+    const websites = await prisma.website.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+    });
+
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    const { defacementService } = await import('../services/DefacementService');
+
+    for (const website of websites) {
+      try {
+        // 각 사이트의 최신 스크린샷 조회
+        const latestScreenshot = await prisma.screenshot.findFirst({
+          where: { websiteId: website.id },
+          orderBy: { capturedAt: 'desc' },
+        });
+
+        if (!latestScreenshot) {
+          skipped++;
+          continue;
+        }
+
+        await defacementService.updateBaseline(website.id, latestScreenshot.id, userId);
+        updated++;
+      } catch (err) {
+        logger.error(`Baseline bulk update failed for website ${website.id}:`, err);
+        failed++;
+      }
+    }
+
+    logger.info(`Baseline bulk update completed: ${updated} updated, ${skipped} skipped, ${failed} failed`);
+
+    sendSuccess(res, {
+      total: websites.length,
+      updated,
+      skipped,
+      failed,
+      message: `베이스라인 일괄 교체 완료: ${updated}개 갱신, ${skipped}개 스킵(스크린샷 없음), ${failed}개 실패`,
+    });
+  } catch (error) {
+    logger.error('베이스라인 일괄 교체 오류:', error);
+    sendError(res, 'BULK_BASELINE_ERROR', '베이스라인 일괄 교체 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
+ * GET /api/settings/defacement/baseline-schedule
+ * 베이스라인 자동 갱신 주기 조회
+ */
+router.get('/defacement/baseline-schedule', authenticate, async (req, res) => {
+  sendSuccess(res, {
+    intervalDays: config.monitoring.baselineRefreshIntervalDays,
+  });
+});
+
+/**
+ * PUT /api/settings/defacement/baseline-schedule
+ * 베이스라인 자동 갱신 주기 설정
+ * Body: { intervalDays: number } (0 = 비활성)
+ */
+router.put('/defacement/baseline-schedule', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { intervalDays } = req.body;
+
+    if (intervalDays === undefined || typeof intervalDays !== 'number') {
+      sendError(res, 'INVALID_INPUT', '갱신 주기(일)를 입력해주세요.', 400);
+      return;
+    }
+
+    if (intervalDays < 0 || intervalDays > 365) {
+      sendError(res, 'INVALID_INPUT', '갱신 주기는 0~365일 사이여야 합니다.', 400);
+      return;
+    }
+
+    (config.monitoring as any).baselineRefreshIntervalDays = Math.round(intervalDays);
+
+    // SchedulerService에 스케줄 등록/제거
+    await schedulerService.scheduleBaselineRefresh(Math.round(intervalDays));
+
+    logger.info(`베이스라인 자동 갱신 주기 변경: ${intervalDays}일`);
+
+    sendSuccess(res, {
+      intervalDays: config.monitoring.baselineRefreshIntervalDays,
+      message: intervalDays === 0
+        ? '베이스라인 자동 갱신이 비활성화되었습니다.'
+        : `베이스라인 자동 갱신 주기가 ${intervalDays}일로 설정되었습니다.`,
+    });
+  } catch (error) {
+    logger.error('베이스라인 갱신 주기 변경 오류:', error);
+    sendError(res, 'UPDATE_ERROR', '베이스라인 갱신 주기 변경 중 오류가 발생했습니다.', 500);
+  }
+});
+
+/**
  * GET /api/settings/server/status
  * 서버 상태 정보 조회 (가동시간, 메모리, DB/Redis, 큐)
  */

@@ -552,6 +552,9 @@ ALERT_TELEGRAM_CHAT_ID=
 DASHBOARD_TOKEN=         # 대시보드 전용 접근 토큰 (비어있으면 인증 없이 접근)
 DASHBOARD_AUTO_ROTATE_INTERVAL=15000  # 자동 로테이션 간격 (ms)
 DASHBOARD_ITEMS_PER_PAGE=35  # 페이지당 사이트 수 (7x5 그리드)
+
+# Baseline
+BASELINE_REFRESH_INTERVAL_DAYS=0  # 베이스라인 자동 갱신 주기 (일, 0=비활성)
 ```
 
 ---
@@ -694,7 +697,7 @@ volumes:
 
 ---
 
-## 현재 구현 상태 (2026-02-13)
+## 현재 구현 상태 (2026-02-14)
 
 ### 완료된 Phase
 
@@ -708,6 +711,7 @@ volumes:
 | Phase 6 | **완료** | 하이브리드 위변조 탐지 (HTML 구조 + 도메인 감사 + 픽셀 비교 3계층), 팝업 자동 제거 |
 | Phase 7 | **완료** | 위변조 탐지 분석 UI 강화 (하이브리드 데이터 대시보드 노출, 설정 페이지) |
 | Phase 8 | **완료** | SNS pixel_only 모드, 스크린샷 품질 관리, 대시보드 UX 개선 |
+| Phase 9 | **완료** | DetailPopup 섹션별 새로고침, 설정 베이스라인 관리, 대시보드 로딩 최적화 |
 
 ### 주요 구현 세부사항
 
@@ -794,6 +798,28 @@ volumes:
   - 설정→대시보드 이동 시 캐시된 데이터로 즉시 표시 (로딩 스켈레톤 없음)
   - WebSocket 재연결 시 자동 데이터 refetch (서버 재시작 대응)
   - WebSocket 이벤트에서도 캐시 동기화
+- **DetailPopup 섹션별 새로고침 (Phase 9)**:
+  - 헤더 레벨 새로고침 아이콘 제거, 각 섹션(현재 스크린샷/베이스라인/차이분석)에 개별 새로고침 아이콘 배치
+  - 각 아이콘 옆 실행 경과 시간(초) 실시간 표시
+  - `handleScreenshotRefresh`: POST refresh → 3초 폴링으로 스크린샷 URL 변경 감지 (최대 60초)
+  - `handleBaselineRefresh`: POST baseline 갱신 → POST recheck → 폴링으로 새 defacement check 감지
+  - `handleDefacementRecheck`: POST recheck → 폴링으로 `checkedAt` 변경 감지 (최대 30초)
+  - 베이스라인 `createdAt`, 차이분석 `checkedAt` 타임스탬프 표시
+- **위변조 재분석 엔드포인트 (Phase 9)**:
+  - `POST /api/defacement/:websiteId/recheck` — 최신 스크린샷 + 활성 베이스라인으로 위변조 재분석 큐잉
+  - `schedulerService.enqueueDefacementCheck()` 호출, 202 응답
+- **설정 페이지 베이스라인 관리 (Phase 9)**:
+  - `POST /api/settings/defacement/baseline-bulk` — 전체 활성 사이트 베이스라인 일괄 교체
+  - `GET/PUT /api/settings/defacement/baseline-schedule` — 자동 갱신 주기 조회/설정
+  - `SchedulerService.scheduleBaselineRefresh()` — repeatable cron job으로 주기적 베이스라인 갱신
+  - `BASELINE_REFRESH_INTERVAL_DAYS` 환경변수 (기본 0 = 비활성)
+  - 프론트엔드: 일괄 교체 버튼 + 진행률/결과 표시 + 프리셋 버튼(비활성/7일/14일/30일)
+- **대시보드 로딩 성능 최적화 (Phase 9)**:
+  - Prisma `findMany` + `include` + `take` → Raw SQL correlated subquery 교체 (499사이트 기준 107초 → 0.3초)
+  - `getAllStatusesWithSummary()` 단일 메서드로 statuses + summary 통합 (중복 DB 쿼리 제거)
+  - `GET /api/monitoring/statuses` 응답에 `{ statuses, summary }` 통합 반환
+  - 프론트엔드 API 호출 3회 → 2회 축소 (`useMonitoringData` 훅)
+  - `httpServer.listen()`을 `scheduleAllWebsites()` 전에 배치하여 서버 즉시 응답 가능
 
 ### 하이브리드 위변조 탐지 환경변수
 

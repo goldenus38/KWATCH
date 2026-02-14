@@ -22,6 +22,7 @@ export class SchedulerService {
   private defacementQueue: Queue<DefacementJobData> | null = null;
   private cleanupQueue: Queue | null = null;
   private cleanupWorker: Worker | null = null;
+  private baselineRefreshWorker: Worker | null = null;
 
   constructor() {
     // TODO: 큐 초기화 및 워커 설정
@@ -64,6 +65,11 @@ export class SchedulerService {
 
       // 정리 작업 워커 초기화
       this.initCleanupWorker();
+
+      // 베이스라인 자동 갱신 스케줄 초기화 (환경변수 기반)
+      if (config.monitoring.baselineRefreshIntervalDays > 0) {
+        await this.scheduleBaselineRefresh(config.monitoring.baselineRefreshIntervalDays);
+      }
 
       // TODO: 이벤트 리스너 설정
       this.setupEventListeners();
@@ -480,6 +486,115 @@ export class SchedulerService {
   }
 
   /**
+   * 베이스라인 자동 갱신 스케줄을 설정/제거합니다
+   * @param intervalDays 갱신 주기 (일). 0이면 비활성화
+   */
+  async scheduleBaselineRefresh(intervalDays: number): Promise<void> {
+    try {
+      if (!this.cleanupQueue) {
+        throw new Error('Cleanup queue not initialized');
+      }
+
+      // 기존 베이스라인 갱신 repeatable job 제거
+      const repeatableJobs = await this.cleanupQueue.getRepeatableJobs();
+      for (const job of repeatableJobs) {
+        if (job.name === 'baseline-refresh') {
+          await this.cleanupQueue.removeRepeatableByKey(job.key);
+        }
+      }
+
+      // 기존 워커 종료
+      if (this.baselineRefreshWorker) {
+        await this.baselineRefreshWorker.close();
+        this.baselineRefreshWorker = null;
+      }
+
+      if (intervalDays <= 0) {
+        logger.info('Baseline auto-refresh disabled');
+        return;
+      }
+
+      // 새 repeatable job 등록 (N일마다 새벽 4시)
+      await this.cleanupQueue.add('baseline-refresh', {}, {
+        repeat: { pattern: `0 4 */${intervalDays} * *` },
+        removeOnComplete: true,
+        removeOnFail: false,
+      });
+
+      // 베이스라인 갱신 워커 초기화
+      this.initBaselineRefreshWorker();
+
+      logger.info(`Baseline auto-refresh scheduled: every ${intervalDays} day(s) at 04:00`);
+    } catch (error) {
+      logger.error('scheduleBaselineRefresh failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 베이스라인 자동 갱신 워커를 초기화합니다
+   */
+  private initBaselineRefreshWorker(): void {
+    this.baselineRefreshWorker = new Worker(
+      'cleanup-queue',
+      async (job) => {
+        if (job.name !== 'baseline-refresh') return;
+
+        logger.info('[BaselineRefresh] Auto baseline refresh started');
+
+        try {
+          const { defacementService } = await import('./DefacementService');
+          const prisma = getDbClient();
+
+          const websites = await prisma.website.findMany({
+            where: { isActive: true },
+            select: { id: true },
+          });
+
+          let updated = 0;
+          let skipped = 0;
+          let failed = 0;
+
+          for (const website of websites) {
+            try {
+              const latestScreenshot = await prisma.screenshot.findFirst({
+                where: { websiteId: website.id },
+                orderBy: { capturedAt: 'desc' },
+              });
+
+              if (!latestScreenshot) {
+                skipped++;
+                continue;
+              }
+
+              // userId=0 for system-initiated updates
+              await defacementService.updateBaseline(website.id, latestScreenshot.id, 0);
+              updated++;
+            } catch {
+              failed++;
+            }
+          }
+
+          logger.info(`[BaselineRefresh] Completed: ${updated} updated, ${skipped} skipped, ${failed} failed`);
+        } catch (error) {
+          logger.error('[BaselineRefresh] Failed:', error);
+          throw error;
+        }
+      },
+      {
+        connection: this.redis as any,
+        concurrency: 1,
+      },
+    );
+
+    this.baselineRefreshWorker.on('failed', (job, err) => {
+      if (job?.name === 'baseline-refresh') {
+        logger.error(`[BaselineRefresh] Job ${job?.id} failed:`, err);
+      }
+    });
+  }
+
+  /**
    * 큐를 초기화합니다 (자동 정리)
    */
   async cleanup(): Promise<void> {
@@ -499,6 +614,9 @@ export class SchedulerService {
       }
       if (this.cleanupWorker) {
         await this.cleanupWorker.close();
+      }
+      if (this.baselineRefreshWorker) {
+        await this.baselineRefreshWorker.close();
       }
       if (this.cleanupQueue) {
         await this.cleanupQueue.close();

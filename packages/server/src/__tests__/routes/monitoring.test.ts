@@ -13,22 +13,24 @@ describe('Monitoring Routes', () => {
   describe('GET /api/monitoring/status', () => {
     it('should return dashboard summary', async () => {
       const now = new Date();
-      prismaMock.website.findMany.mockResolvedValueOnce([
+      prismaMock.$queryRaw.mockResolvedValueOnce([
         {
-          id: 1, isActive: true,
-          monitoringResults: [{ isUp: true, responseTimeMs: 100, checkedAt: now }],
-          defacementChecks: [],
+          id: 1, name: 'Site A', url: 'https://a.com', organization_name: null,
+          monitoring_results: [{ is_up: true, response_time_ms: 100, checked_at: now.toISOString(), final_url: null }],
+          screenshots: null,
+          defacement_checks: null,
         },
         {
-          id: 2, isActive: true,
-          monitoringResults: [
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
-            { isUp: false, responseTimeMs: null, checkedAt: now },
+          id: 2, name: 'Site B', url: 'https://b.com', organization_name: null,
+          monitoring_results: [
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
           ],
-          defacementChecks: [],
+          screenshots: null,
+          defacement_checks: null,
         },
       ]);
 
@@ -45,12 +47,12 @@ describe('Monitoring Routes', () => {
   describe('GET /api/monitoring/statuses', () => {
     it('should return all active site statuses', async () => {
       const now = new Date();
-      prismaMock.website.findMany.mockResolvedValueOnce([
+      prismaMock.$queryRaw.mockResolvedValueOnce([
         {
-          id: 1, name: 'Site A', url: 'https://a.com', isActive: true,
-          monitoringResults: [{ statusCode: 200, responseTimeMs: 50, isUp: true, errorMessage: null, checkedAt: now }],
-          screenshots: [],
-          defacementChecks: [],
+          id: 1, name: 'Site A', url: 'https://a.com', organization_name: null,
+          monitoring_results: [{ status_code: 200, response_time_ms: 50, is_up: true, error_message: null, checked_at: now.toISOString(), final_url: null }],
+          screenshots: null,
+          defacement_checks: null,
         },
       ]);
 
@@ -58,8 +60,10 @@ describe('Monitoring Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data).toHaveLength(1);
-      expect(res.body.data[0].websiteName).toBe('Site A');
+      expect(res.body.data.statuses).toHaveLength(1);
+      expect(res.body.data.statuses[0].websiteName).toBe('Site A');
+      expect(res.body.data.summary).toHaveProperty('total', 1);
+      expect(res.body.data.summary).toHaveProperty('up', 1);
     });
   });
 

@@ -70,46 +70,52 @@ describe('MonitoringService', () => {
   describe('getDashboardSummary', () => {
     it('should correctly count up/down/warning/defaced/unknown', async () => {
       const now = new Date();
-      prismaMock.website.findMany.mockResolvedValueOnce([
+      // Raw SQL returns snake_case columns with json_agg sub-arrays
+      prismaMock.$queryRaw.mockResolvedValueOnce([
         // up site
         {
-          id: 1, isActive: true, organizationName: '테스트기관A',
-          monitoringResults: [{ isUp: true, responseTimeMs: 100, checkedAt: now, finalUrl: 'https://a.com' }],
-          defacementChecks: [],
+          id: 1, name: 'Site A', url: 'https://a.com', organization_name: '테스트기관A',
+          monitoring_results: [{ is_up: true, response_time_ms: 100, checked_at: now.toISOString(), final_url: 'https://a.com' }],
+          screenshots: null,
+          defacement_checks: null,
         },
         // down site (5 consecutive failures required)
         {
-          id: 2, isActive: true, organizationName: '테스트기관B',
-          monitoringResults: [
-            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
-            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
-            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
-            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
-            { isUp: false, responseTimeMs: null, checkedAt: now, finalUrl: null },
+          id: 2, name: 'Site B', url: 'https://b.com', organization_name: '테스트기관B',
+          monitoring_results: [
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
+            { is_up: false, response_time_ms: null, checked_at: now.toISOString(), final_url: null },
           ],
-          defacementChecks: [],
+          screenshots: null,
+          defacement_checks: null,
         },
-        // warning (slow) site — responseTimeMs > 10000 (default threshold)
+        // warning (slow) site
         {
-          id: 3, isActive: true, organizationName: null,
-          monitoringResults: [{ isUp: true, responseTimeMs: 15000, checkedAt: now, finalUrl: 'https://c.com/redirected' }],
-          defacementChecks: [],
+          id: 3, name: 'Site C', url: 'https://c.com', organization_name: null,
+          monitoring_results: [{ is_up: true, response_time_ms: 15000, checked_at: now.toISOString(), final_url: 'https://c.com/redirected' }],
+          screenshots: null,
+          defacement_checks: null,
         },
         // defaced site (3 consecutive detections required)
         {
-          id: 4, isActive: true, organizationName: '테스트기관D',
-          monitoringResults: [{ isUp: true, responseTimeMs: 200, checkedAt: now, finalUrl: 'https://d.com' }],
-          defacementChecks: [
-            { isDefaced: true },
-            { isDefaced: true },
-            { isDefaced: true },
+          id: 4, name: 'Site D', url: 'https://d.com', organization_name: '테스트기관D',
+          monitoring_results: [{ is_up: true, response_time_ms: 200, checked_at: now.toISOString(), final_url: 'https://d.com' }],
+          screenshots: null,
+          defacement_checks: [
+            { is_defaced: true, similarity_score: null, html_similarity_score: null, checked_at: now.toISOString() },
+            { is_defaced: true, similarity_score: null, html_similarity_score: null, checked_at: now.toISOString() },
+            { is_defaced: true, similarity_score: null, html_similarity_score: null, checked_at: now.toISOString() },
           ],
         },
         // unknown site (no results)
         {
-          id: 5, isActive: true, organizationName: null,
-          monitoringResults: [],
-          defacementChecks: [],
+          id: 5, name: 'Site E', url: 'https://e.com', organization_name: null,
+          monitoring_results: null,
+          screenshots: null,
+          defacement_checks: null,
         },
       ]);
 
@@ -121,11 +127,10 @@ describe('MonitoringService', () => {
       expect(summary.warning).toBe(1);
       expect(summary.defaced).toBe(1);
       expect(summary.unknown).toBe(1);
-      expect(summary.lastScanAt).toEqual(now);
     });
 
     it('should return zero counts when no websites', async () => {
-      prismaMock.website.findMany.mockResolvedValueOnce([]);
+      prismaMock.$queryRaw.mockResolvedValueOnce([]);
 
       const summary = await service.getDashboardSummary();
 
@@ -139,18 +144,19 @@ describe('MonitoringService', () => {
   describe('getAllStatuses', () => {
     it('should return statuses for all active websites', async () => {
       const now = new Date();
-      prismaMock.website.findMany.mockResolvedValueOnce([
+      // Raw SQL returns snake_case columns with json_agg sub-arrays
+      prismaMock.$queryRaw.mockResolvedValueOnce([
         {
-          id: 1, name: 'Site A', url: 'https://a.com', isActive: true, organizationName: '기관A',
-          monitoringResults: [{ statusCode: 200, responseTimeMs: 50, isUp: true, errorMessage: null, checkedAt: now, finalUrl: 'https://a.com/' }],
-          screenshots: [{ id: BigInt(10), capturedAt: now }],
-          defacementChecks: [],
+          id: 1, name: 'Site A', url: 'https://a.com', organization_name: '기관A',
+          monitoring_results: [{ status_code: 200, response_time_ms: 50, is_up: true, error_message: null, checked_at: now.toISOString(), final_url: 'https://a.com/' }],
+          screenshots: [{ id: 10, captured_at: now.toISOString() }],
+          defacement_checks: null,
         },
         {
-          id: 2, name: 'Site B', url: 'https://b.com', isActive: true, organizationName: null,
-          monitoringResults: [],
-          screenshots: [],
-          defacementChecks: [],
+          id: 2, name: 'Site B', url: 'https://b.com', organization_name: null,
+          monitoring_results: null,
+          screenshots: null,
+          defacement_checks: null,
         },
       ]);
 

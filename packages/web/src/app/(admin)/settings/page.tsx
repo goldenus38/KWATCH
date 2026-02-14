@@ -31,6 +31,12 @@ export default function SettingsPage() {
   const [editHtmlEnabled, setEditHtmlEnabled] = useState(true);
   const [isSavingDefacement, setIsSavingDefacement] = useState(false);
 
+  // 베이스라인 관리
+  const [isBulkRefreshing, setIsBulkRefreshing] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ total: number; updated: number; skipped: number; failed: number; message: string } | null>(null);
+  const [baselineScheduleDays, setBaselineScheduleDays] = useState(0);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+
   // 서버 재시작
   const [isRestarting, setIsRestarting] = useState(false);
   const [restartStatus, setRestartStatus] = useState('');
@@ -190,6 +196,73 @@ export default function SettingsPage() {
     }
   };
 
+  // 베이스라인 갱신 주기 조회
+  const fetchBaselineSchedule = async () => {
+    try {
+      const response = await api.get<{ intervalDays: number }>('/api/settings/defacement/baseline-schedule');
+      if (response.success && response.data) {
+        setBaselineScheduleDays(response.data.intervalDays);
+      }
+    } catch (err) {
+      console.error('Error fetching baseline schedule:', err);
+    }
+  };
+
+  // 전체 베이스라인 일괄 교체
+  const handleBulkBaselineRefresh = async () => {
+    if (!window.confirm('모든 활성 사이트의 베이스라인을 최신 스크린샷으로 교체하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) {
+      return;
+    }
+
+    setIsBulkRefreshing(true);
+    setBulkResult(null);
+    setError(null);
+
+    try {
+      const response = await api.post<{ total: number; updated: number; skipped: number; failed: number; message: string }>(
+        '/api/settings/defacement/baseline-bulk',
+        {},
+      );
+
+      if (response.success && response.data) {
+        setBulkResult(response.data);
+        setSuccessMessage(response.data.message);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setError(response.error?.message || '베이스라인 일괄 교체에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsBulkRefreshing(false);
+    }
+  };
+
+  // 베이스라인 갱신 주기 저장
+  const handleSaveBaselineSchedule = async () => {
+    setIsSavingSchedule(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await api.put<{ intervalDays: number; message: string }>(
+        '/api/settings/defacement/baseline-schedule',
+        { intervalDays: baselineScheduleDays },
+      );
+
+      if (response.success && response.data) {
+        setSuccessMessage(response.data.message);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setError(response.error?.message || '베이스라인 갱신 주기 변경에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
   // 체크 주기 저장
   const handleSaveCheckInterval = async () => {
     setIsSavingInterval(true);
@@ -296,6 +369,7 @@ export default function SettingsPage() {
     fetchAlertChannels();
     fetchMonitoringSettings();
     fetchDefacementConfig();
+    fetchBaselineSchedule();
     if (currentUser?.role === 'admin') {
       fetchUsers();
       fetchServerStatus();
@@ -676,6 +750,99 @@ export default function SettingsPage() {
               className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors"
             >
               {isSavingDefacement ? '적용 중...' : '위변조 설정 적용'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 섹션: 베이스라인 관리 */}
+      {currentUser?.role === 'admin' && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold text-kwatch-text-primary">
+            베이스라인 관리
+          </h2>
+
+          <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 space-y-6">
+            {/* 전체 베이스라인 일괄 교체 */}
+            <div>
+              <h3 className="text-sm font-medium text-kwatch-text-primary mb-2">
+                전체 베이스라인 일괄 교체
+              </h3>
+              <p className="text-xs text-kwatch-text-muted mb-3">
+                모든 활성 사이트의 베이스라인을 최신 스크린샷으로 교체합니다. 사이트 디자인 일괄 변경 후 또는 월 1회 갱신을 권장합니다.
+              </p>
+              <button
+                onClick={handleBulkBaselineRefresh}
+                disabled={isBulkRefreshing}
+                className="px-6 py-2 bg-kwatch-status-warning hover:bg-yellow-600 disabled:opacity-50 text-black rounded-md font-medium transition-colors"
+              >
+                {isBulkRefreshing ? '교체 중...' : '전체 베이스라인 교체'}
+              </button>
+              {bulkResult && (
+                <div className="mt-3 text-sm text-kwatch-text-secondary bg-kwatch-bg-primary rounded-md p-3">
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <span className="text-xs text-kwatch-text-muted">전체</span>
+                      <div className="font-semibold text-kwatch-text-primary">{bulkResult.total}</div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-kwatch-text-muted">갱신</span>
+                      <div className="font-semibold text-kwatch-status-normal">{bulkResult.updated}</div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-kwatch-text-muted">스킵</span>
+                      <div className="font-semibold text-kwatch-text-secondary">{bulkResult.skipped}</div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-kwatch-text-muted">실패</span>
+                      <div className={`font-semibold ${bulkResult.failed > 0 ? 'text-kwatch-status-critical' : 'text-kwatch-text-primary'}`}>{bulkResult.failed}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 베이스라인 자동 갱신 주기 */}
+            <div className="border-t border-kwatch-bg-tertiary pt-6">
+              <h3 className="text-sm font-medium text-kwatch-text-primary mb-2">
+                베이스라인 자동 갱신 주기 (일)
+              </h3>
+              <div className="flex items-center gap-4">
+                <input
+                  type="number"
+                  value={baselineScheduleDays}
+                  onChange={(e) => setBaselineScheduleDays(Math.max(0, Math.min(365, parseInt(e.target.value) || 0)))}
+                  min="0"
+                  max="365"
+                  className="w-24 px-4 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                />
+                <div className="flex gap-2">
+                  {[0, 7, 14, 30].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setBaselineScheduleDays(val)}
+                      className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                        baselineScheduleDays === val
+                          ? 'bg-kwatch-accent text-white'
+                          : 'bg-kwatch-bg-primary border border-kwatch-bg-tertiary text-kwatch-text-secondary hover:bg-kwatch-bg-tertiary'
+                      }`}
+                    >
+                      {val === 0 ? '비활성' : `${val}일`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-kwatch-text-muted mt-2">
+                0으로 설정하면 자동 갱신이 비활성화됩니다. 설정된 주기마다 새벽 4시에 자동으로 모든 베이스라인이 최신 스크린샷으로 교체됩니다.
+              </p>
+            </div>
+
+            <button
+              onClick={handleSaveBaselineSchedule}
+              disabled={isSavingSchedule}
+              className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors"
+            >
+              {isSavingSchedule ? '적용 중...' : '스케줄 적용'}
             </button>
           </div>
         </div>

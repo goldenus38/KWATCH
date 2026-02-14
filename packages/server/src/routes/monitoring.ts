@@ -26,12 +26,18 @@ router.get('/status', async (req, res) => {
 
 /**
  * GET /api/monitoring/statuses
- * 전체 활성 사이트 상태 목록 (대시보드 그리드용)
+ * 전체 활성 사이트 상태 목록 + 요약 (대시보드용, 1회 DB 쿼리)
  */
 router.get('/statuses', async (req, res) => {
   try {
-    const statuses = await monitoringService.getAllStatuses();
-    sendSuccess(res, statuses);
+    const { statuses, summary } = await monitoringService.getAllStatusesWithSummary();
+    sendSuccess(res, {
+      statuses,
+      summary: {
+        ...summary,
+        responseTimeWarningMs: config.monitoring.responseTimeWarningMs,
+      },
+    });
   } catch (error) {
     sendError(res, 'STATUSES_ERROR', '전체 상태 목록 조회 중 오류가 발생했습니다.', 500);
   }
