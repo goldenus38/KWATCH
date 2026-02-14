@@ -395,7 +395,7 @@ export class AlertService {
           take: limit,
           skip,
           include: {
-            website: { select: { id: true, name: true, organizationName: true } },
+            website: { select: { id: true, name: true, organizationName: true, url: true } },
             acknowledger: { select: { id: true, username: true } },
           },
         }),

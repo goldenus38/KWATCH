@@ -32,6 +32,7 @@ router.get('/', async (req, res) => {
       ...alert,
       websiteName: alert.website?.name || null,
       organizationName: alert.website?.organizationName || null,
+      url: alert.website?.url || null,
     }));
 
     const meta = createPaginationMeta(total, filter.page || 1, filter.limit || 50);

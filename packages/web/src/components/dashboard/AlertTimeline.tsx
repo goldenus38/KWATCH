@@ -7,6 +7,7 @@ import { ALERT_TYPE_ICONS, ALERT_TYPE_LABELS } from '@/lib/constants';
 
 interface AlertTimelineProps {
   alerts: Alert[];
+  onAlertClick?: (websiteId: number) => void;
 }
 
 /**
@@ -14,7 +15,7 @@ interface AlertTimelineProps {
  * 최근 알림을 수평 스크롤 티커로 표시
  * 자동 스크롤 및 호버 시 일시정지 기능
  */
-export function AlertTimeline({ alerts }: AlertTimelineProps) {
+export function AlertTimeline({ alerts, onAlertClick }: AlertTimelineProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -87,7 +88,8 @@ export function AlertTimeline({ alerts }: AlertTimelineProps) {
   const renderAlertItem = (alert: Alert, keyPrefix = '') => (
     <div
       key={`${keyPrefix}${alert.id}`}
-      className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded transition-all duration-500 text-xs ${getSeverityColor(alert.severity)} ${
+      onClick={() => onAlertClick?.(alert.websiteId)}
+      className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded transition-all duration-500 text-xs cursor-pointer hover:brightness-125 ${getSeverityColor(alert.severity)} ${
         highlightId === alert.id ? 'ring-1 ring-white/50 brightness-150' : ''
       }`}
     >

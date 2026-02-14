@@ -264,6 +264,8 @@ export function DetailPopup({
           if (defacementRes.data.checkedAt && defacementRes.data.checkedAt !== prevCheckedAt) {
             clearInterval(timer);
             setLatestDefacement(defacementRes.data);
+            const monRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
+            if (monRes.success && monRes.data) setLocalStatus(monRes.data);
             setCacheBuster(Date.now());
             setIsBaselineRefreshing(false);
             setBaselineElapsed(0);
@@ -278,6 +280,8 @@ export function DetailPopup({
           if (defacementRes.success && defacementRes.data) {
             setLatestDefacement(defacementRes.data);
           }
+          const monRes = await api.get<MonitoringStatus>(`/api/monitoring/${websiteId}/latest`);
+          if (monRes.success && monRes.data) setLocalStatus(monRes.data);
           clearInterval(timer);
           setCacheBuster(Date.now());
           setIsBaselineRefreshing(false);
@@ -859,9 +863,9 @@ export function DetailPopup({
                           )}
                         </div>
                         <div className="h-48 bg-black flex items-center justify-center">
-                          {latestDefacement?.currentScreenshotId ? (
+                          {screenshotUrl ? (
                             <img
-                              src={`${API_BASE_URL}/api/screenshots/image/${latestDefacement.currentScreenshotId}`}
+                              src={screenshotUrl}
                               alt={`${websiteName} 현재 스크린샷`}
                               className="w-full h-full object-contain"
                             />

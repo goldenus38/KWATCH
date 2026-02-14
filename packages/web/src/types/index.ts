@@ -196,6 +196,7 @@ export interface Alert {
   websiteId: number;
   websiteName?: string;
   organizationName?: string;
+  url?: string;
   alertType: AlertType;
   severity: Severity;
   message: string;

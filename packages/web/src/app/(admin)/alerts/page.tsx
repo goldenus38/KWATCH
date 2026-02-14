@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 import type { Alert, AlertType, Severity, PaginationMeta } from '@/types';
 
 export default function AlertsPage() {
@@ -119,11 +120,6 @@ export default function AlertsPage() {
       RECOVERED: '복구',
     };
     return labels[type] || type;
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('ko-KR');
   };
 
   return (
@@ -267,13 +263,24 @@ export default function AlertsPage() {
                   }`}
                 >
                   <td className="px-6 py-3 text-sm text-kwatch-text-secondary whitespace-nowrap">
-                    {formatDate(alert.createdAt)}
+                    {formatDateTime(alert.createdAt)}
                   </td>
                   <td className="px-6 py-3 text-sm text-kwatch-text-secondary max-w-[150px] truncate">
                     {alert.organizationName || '-'}
                   </td>
                   <td className="px-6 py-3 text-sm font-medium text-kwatch-text-primary max-w-xs truncate">
-                    {alert.websiteName || '-'}
+                    {alert.url ? (
+                      <a
+                        href={alert.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-kwatch-accent hover:text-kwatch-accent-hover hover:underline"
+                      >
+                        {alert.websiteName || '-'}
+                      </a>
+                    ) : (
+                      alert.websiteName || '-'
+                    )}
                   </td>
                   <td className="px-6 py-3 text-sm">
                     {getAlertTypeLabel(alert.alertType)}

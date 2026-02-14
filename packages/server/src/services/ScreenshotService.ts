@@ -271,6 +271,8 @@ export class ScreenshotService {
           'Dismiss',
           'dismiss',
           'Skip',
+          'Next time',
+          'Next Time',
           'Accept All',
           'Accept all',
           'Accept Cookies',

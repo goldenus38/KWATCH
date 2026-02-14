@@ -161,7 +161,7 @@ export default function DashboardPage() {
 
       {/* 하단 알림 타임라인 - 얇은 한 줄 */}
       <div className="flex-shrink-0 border-t border-kwatch-bg-tertiary">
-        <AlertTimeline alerts={recentAlerts} />
+        <AlertTimeline alerts={recentAlerts} onAlertClick={handleSiteClick} />
       </div>
 
       {/* 상세 정보 팝업 */}

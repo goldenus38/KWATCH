@@ -55,6 +55,12 @@ export default function SettingsPage() {
   const [isTestingChannel, setIsTestingChannel] = useState<Record<number, boolean>>({});
   const [testResults, setTestResults] = useState<Record<number, { success: boolean; error?: string }>>({});
 
+  // 사용자 관리
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm, setUserForm] = useState({ username: '', password: '', email: '', role: 'VIEWER' });
+  const [isSavingUser, setIsSavingUser] = useState(false);
+
   // 서버 재시작
   const [isRestarting, setIsRestarting] = useState(false);
   const [restartStatus, setRestartStatus] = useState('');
@@ -133,6 +139,101 @@ export default function SettingsPage() {
       }
     }
   }, []);
+
+  // 사용자 폼 열기
+  const openUserForm = (user?: User) => {
+    if (user) {
+      setEditingUser(user);
+      setUserForm({ username: user.username, password: '', email: user.email || '', role: user.role });
+    } else {
+      setEditingUser(null);
+      setUserForm({ username: '', password: '', email: '', role: 'VIEWER' });
+    }
+    setShowUserForm(true);
+  };
+
+  const closeUserForm = () => {
+    setShowUserForm(false);
+    setEditingUser(null);
+  };
+
+  // 사용자 저장 (추가/수정)
+  const handleSaveUser = async () => {
+    setIsSavingUser(true);
+    setError(null);
+
+    try {
+      if (editingUser) {
+        // 수정
+        const body: Record<string, unknown> = {
+          email: userForm.email,
+          role: userForm.role,
+        };
+        if (userForm.password) {
+          body.password = userForm.password;
+        }
+        const response = await api.put(`/api/users/${editingUser.id}`, body);
+        if (response.success) {
+          setSuccessMessage('사용자가 수정되었습니다.');
+          setTimeout(() => setSuccessMessage(null), 3000);
+          closeUserForm();
+          fetchUsers();
+        } else {
+          setError(response.error?.message || '사용자 수정에 실패했습니다.');
+        }
+      } else {
+        // 추가
+        if (!userForm.username || !userForm.password) {
+          setError('사용자명과 비밀번호는 필수입니다.');
+          setIsSavingUser(false);
+          return;
+        }
+        const response = await api.post('/api/users', {
+          username: userForm.username,
+          password: userForm.password,
+          email: userForm.email,
+          role: userForm.role,
+        });
+        if (response.success) {
+          setSuccessMessage('사용자가 추가되었습니다.');
+          setTimeout(() => setSuccessMessage(null), 3000);
+          closeUserForm();
+          fetchUsers();
+        } else {
+          setError(response.error?.message || '사용자 추가에 실패했습니다.');
+        }
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  // 사용자 삭제
+  const handleDeleteUser = async (userId: number) => {
+    if (!window.confirm('이 사용자를 삭제하시겠습니까?')) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('kwatch_token')}`,
+        },
+      });
+
+      if (response.status === 204 || response.ok) {
+        setUsers(users.filter((u) => u.id !== userId));
+        setSuccessMessage('사용자가 삭제되었습니다.');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        const data = await response.json().catch(() => null);
+        setError(data?.error?.message || '사용자 삭제에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 통신 중 오류가 발생했습니다.');
+    }
+  };
 
   // 알림 채널 설정 조회 (admin 전용)
   const fetchAlertChannels = async () => {
@@ -1415,9 +1516,97 @@ export default function SettingsPage() {
       {/* 섹션 3: 사용자 관리 (Admin만) */}
       {currentUser?.role?.toLowerCase() === 'admin' && (
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-kwatch-text-primary">
-            사용자 관리
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-kwatch-text-primary">
+              사용자 관리
+            </h2>
+            <button
+              onClick={() => openUserForm()}
+              className="px-4 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover text-white rounded-md font-medium transition-colors text-sm"
+            >
+              + 새 사용자 추가
+            </button>
+          </div>
+
+          {/* 사용자 추가/수정 폼 */}
+          {showUserForm && (
+            <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-accent p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-kwatch-text-primary">
+                {editingUser ? '사용자 수정' : '사용자 추가'}
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 사용자명 (추가 시만 편집 가능) */}
+                <div>
+                  <label className="block text-xs text-kwatch-text-muted mb-1">사용자명 *</label>
+                  <input
+                    type="text"
+                    value={userForm.username}
+                    onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                    disabled={!!editingUser}
+                    placeholder="사용자명 (1~50자)"
+                    className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent disabled:opacity-50"
+                  />
+                </div>
+
+                {/* 비밀번호 */}
+                <div>
+                  <label className="block text-xs text-kwatch-text-muted mb-1">
+                    비밀번호 {editingUser ? '(변경 시에만 입력)' : '*'}
+                  </label>
+                  <input
+                    type="password"
+                    value={userForm.password}
+                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                    placeholder={editingUser ? '변경하지 않으려면 비워두세요' : '비밀번호 (6자 이상)'}
+                    className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                  />
+                </div>
+
+                {/* 이메일 */}
+                <div>
+                  <label className="block text-xs text-kwatch-text-muted mb-1">이메일</label>
+                  <input
+                    type="email"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    placeholder="email@example.com (선택)"
+                    className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                  />
+                </div>
+
+                {/* 역할 */}
+                <div>
+                  <label className="block text-xs text-kwatch-text-muted mb-1">역할 *</label>
+                  <select
+                    value={userForm.role}
+                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                    className="w-full px-3 py-2 bg-kwatch-bg-primary border border-kwatch-bg-tertiary rounded-md text-kwatch-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-kwatch-accent"
+                  >
+                    <option value="VIEWER">VIEWER</option>
+                    <option value="ANALYST">ANALYST</option>
+                    <option value="ADMIN">ADMIN</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSaveUser}
+                  disabled={isSavingUser}
+                  className="px-6 py-2 bg-kwatch-accent hover:bg-kwatch-accent-hover disabled:opacity-50 text-white rounded-md font-medium transition-colors text-sm"
+                >
+                  {isSavingUser ? '저장 중...' : (editingUser ? '수정' : '추가')}
+                </button>
+                <button
+                  onClick={closeUserForm}
+                  className="px-6 py-2 bg-kwatch-bg-tertiary hover:bg-kwatch-bg-primary text-kwatch-text-secondary rounded-md font-medium transition-colors text-sm"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="bg-kwatch-bg-secondary rounded-lg overflow-hidden border border-kwatch-bg-tertiary">
             <table className="w-full">
@@ -1436,7 +1625,7 @@ export default function SettingsPage() {
                     상태
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-medium text-kwatch-text-primary">
-                    작업
+                    관리
                   </th>
                 </tr>
               </thead>
@@ -1448,59 +1637,59 @@ export default function SettingsPage() {
                     </td>
                   </tr>
                 ) : (
-                  users.map((user) => (
-                    <tr
-                      key={user.id}
-                      className="border-b border-kwatch-bg-tertiary hover:bg-kwatch-bg-primary transition-colors"
-                    >
-                      <td className="px-6 py-3 text-sm font-medium">{user.username}</td>
-                      <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
-                        {user.email || '-'}
-                      </td>
-                      <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
-                        {user.role}
-                      </td>
-                      <td className="px-6 py-3 text-sm">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            user.isActive
-                              ? 'bg-kwatch-status-normal text-white'
-                              : 'bg-kwatch-status-unknown text-white'
-                          }`}
-                        >
-                          {user.isActive ? '활성' : '비활성'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-sm space-x-2">
-                        <button
-                          disabled
-                          title="준비 중"
-                          className="text-kwatch-accent opacity-50 cursor-not-allowed"
-                        >
-                          수정
-                        </button>
-                        <button
-                          disabled
-                          title="준비 중"
-                          className="text-kwatch-status-critical opacity-50 cursor-not-allowed"
-                        >
-                          삭제
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  users.map((user) => {
+                    const isAdmin = user.username.toLowerCase() === 'admin';
+                    return (
+                      <tr
+                        key={user.id}
+                        className="border-b border-kwatch-bg-tertiary hover:bg-kwatch-bg-primary transition-colors"
+                      >
+                        <td className="px-6 py-3 text-sm font-medium">{user.username}</td>
+                        <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
+                          {user.email || '-'}
+                        </td>
+                        <td className="px-6 py-3 text-sm text-kwatch-text-secondary">
+                          {user.role}
+                        </td>
+                        <td className="px-6 py-3 text-sm">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              user.isActive
+                                ? 'bg-kwatch-status-normal text-white'
+                                : 'bg-kwatch-status-unknown text-white'
+                            }`}
+                          >
+                            {user.isActive ? '활성' : '비활성'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-sm">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => openUserForm(user)}
+                              disabled={isAdmin}
+                              title={isAdmin ? 'admin 계정은 수정할 수 없습니다' : '수정'}
+                              className="p-1.5 text-kwatch-text-secondary hover:text-kwatch-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                            </button>
+                            {!isAdmin && (
+                              <button
+                                onClick={() => handleDeleteUser(user.id)}
+                                title="삭제"
+                                className="p-1.5 text-kwatch-text-secondary hover:text-kwatch-status-critical transition-colors"
+                              >
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
-
-          <button
-            disabled
-            title="준비 중"
-            className="px-6 py-2 bg-kwatch-accent text-white rounded-md font-medium transition-colors opacity-50 cursor-not-allowed"
-          >
-            + 새 사용자 추가
-          </button>
         </div>
       )}
 

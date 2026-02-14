@@ -93,14 +93,16 @@ router.get('/', authenticate, async (req, res) => {
       }
     }
 
-    // 검색 필터 (url, name, organizationName)
+    // 검색 필터 (url, name, organizationName) — 공백 구분 토큰 AND 검색
     if (search && typeof search === 'string' && search.trim()) {
-      const searchTerm = search.trim();
-      where.OR = [
-        { url: { contains: searchTerm, mode: 'insensitive' } },
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { organizationName: { contains: searchTerm, mode: 'insensitive' } },
-      ];
+      const tokens = search.trim().split(/\s+/);
+      where.AND = tokens.map((token: string) => ({
+        OR: [
+          { url: { contains: token, mode: 'insensitive' as const } },
+          { name: { contains: token, mode: 'insensitive' as const } },
+          { organizationName: { contains: token, mode: 'insensitive' as const } },
+        ],
+      }));
     }
 
     // 총 개수 조회

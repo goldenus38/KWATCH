@@ -34,7 +34,7 @@ export const config = {
   monitoring: {
     defaultCheckInterval: parseInt(process.env.DEFAULT_CHECK_INTERVAL || '60', 10),
     defaultTimeout: parseInt(process.env.DEFAULT_TIMEOUT || '60', 10),
-    defacementThreshold: parseInt(process.env.DEFACEMENT_THRESHOLD || '85', 10),
+    defacementThreshold: parseInt(process.env.DEFACEMENT_THRESHOLD || '80', 10),
     screenshotInterval: parseInt(process.env.SCREENSHOT_INTERVAL || '300', 10), // 스크린샷 캡처 주기 (초, 기본 5분)
     defacementInterval: parseInt(process.env.DEFACEMENT_INTERVAL || '600', 10), // 위변조 체크 주기 (초, 기본 10분)
     monitoringConcurrency: parseInt(process.env.MONITORING_CONCURRENCY || '20', 10),
