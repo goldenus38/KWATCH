@@ -168,7 +168,9 @@ async function startServer(): Promise<void> {
   }
 }
 
-// 서버 시작 (직접 실행 시에만, 테스트에서 import 시 실행 방지)
-if (require.main === module) {
+// 서버 시작 (테스트 환경에서는 실행 방지)
+// tsx/ts-node 등 런타임에서 require.main === module이 동작하지 않을 수 있으므로
+// Vitest 환경변수로 판별
+if (!process.env.VITEST) {
   startServer();
 }

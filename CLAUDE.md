@@ -951,6 +951,41 @@ v1.1.0 기능 추가(finalUrl, organizationName 대시보드 노출) 코드 리�
   docker compose build       # 이미지 리빌드
   ```
 
+### 로컬 개발 모드 (Hot Reload)
+
+코드 변경 시 Docker 풀 빌드(2~5분) 대신 **로컬 실행으로 즉시 반영** (<1초):
+
+**원클릭 실행:**
+```bash
+./dev.sh                     # DB/Redis Docker + server/web 로컬 실행
+```
+
+**수동 실행 (3단계):**
+```bash
+# 1. DB + Redis만 Docker로 실행
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# 2. 서버 로컬 실행 (터미널 1) — tsx watch, 변경 시 ~1초 재시작
+cd packages/server && npm run dev
+
+# 3. 웹 로컬 실행 (터미널 2) — Next.js HMR, 변경 즉시 반영
+cd packages/web && npm run dev
+```
+
+**환경변수**: `.env` 파일의 기본값이 로컬 개발에 맞게 설정되어 있음 (`localhost:5432`, `localhost:6379`)
+
+| | Docker 풀 빌드 | 로컬 개발 모드 |
+|---|---|---|
+| 서버 코드 변경 | tsc 40s + restart | **tsx watch ~1s** |
+| 프론트 코드 변경 | next build 120s + restart | **HMR 즉시** |
+| 용도 | 배포 확인 | **일상 개발** |
+
+**Docker 빌드 캐시 정리** (디스크 공간 부족 시):
+```bash
+docker builder prune --all     # 빌드 캐시 정리
+docker image prune -a          # 미사용 이미지 정리
+```
+
 ### 운영 환경 (Rocky Linux 8.10)
 
 - Docker Engine + Docker Compose V2 직접 설치 (Docker Desktop 불필요)

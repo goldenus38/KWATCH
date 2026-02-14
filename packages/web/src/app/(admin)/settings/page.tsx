@@ -7,6 +7,7 @@ import type { AlertChannel, User, DefacementConfig } from '@/types';
 
 export default function SettingsPage() {
   const [alertChannels, setAlertChannels] = useState<AlertChannel[]>([]);
+  const [channelsLoaded, setChannelsLoaded] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,32 +117,24 @@ export default function SettingsPage() {
     }
   }, []);
 
-  // 알림 채널 설정 조회
+  // 알림 채널 설정 조회 (admin 전용)
   const fetchAlertChannels = async () => {
-    setIsLoading(true);
-    setError(null);
-
     try {
       const response = await api.get<AlertChannel[]>('/api/alerts/channels');
 
       if (response.success && response.data) {
         setAlertChannels(response.data);
-      } else if (!isRestarting) {
-        setError('알림 채널 설정을 불러올 수 없습니다.');
       }
     } catch (err) {
-      if (!isRestarting) {
-        setError('서버 통신 중 오류가 발생했습니다.');
-      }
       console.error('Error fetching alert channels:', err);
     } finally {
-      setIsLoading(false);
+      setChannelsLoaded(true);
     }
   };
 
   // 사용자 목록 조회 (admin만 가능)
   const fetchUsers = async () => {
-    if (currentUser?.role !== 'admin') {
+    if (currentUser?.role?.toLowerCase() !== 'admin') {
       return;
     }
 
@@ -366,11 +359,11 @@ export default function SettingsPage() {
 
   // 초기 로드
   useEffect(() => {
-    fetchAlertChannels();
     fetchMonitoringSettings();
     fetchDefacementConfig();
     fetchBaselineSchedule();
-    if (currentUser?.role === 'admin') {
+    if (currentUser?.role?.toLowerCase() === 'admin') {
+      fetchAlertChannels();
       fetchUsers();
       fetchServerStatus();
       // 30초마다 서버 상태 갱신
@@ -756,7 +749,7 @@ export default function SettingsPage() {
       )}
 
       {/* 섹션: 베이스라인 관리 */}
-      {currentUser?.role === 'admin' && (
+      {currentUser?.role?.toLowerCase() === 'admin' && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-kwatch-text-primary">
             베이스라인 관리
@@ -848,61 +841,69 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* 섹션 3: 알림 채널 설정 */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-semibold text-kwatch-text-primary">
-          알림 채널 설정
-        </h2>
+      {/* 섹션 3: 알림 채널 설정 (admin 전용) */}
+      {currentUser?.role?.toLowerCase() === 'admin' && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold text-kwatch-text-primary">
+            알림 채널 설정
+          </h2>
 
-        {isLoading ? (
-          <div className="text-kwatch-text-muted">로딩 중...</div>
-        ) : (
-          <div className="space-y-4">
-            {alertChannels.map((channel) => (
-              <div
-                key={channel.id}
-                className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 flex items-start justify-between"
-              >
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-kwatch-text-primary mb-2">
-                    {getChannelTypeLabel(channel.channelType)}
-                  </h3>
-                  <div className="text-sm text-kwatch-text-secondary space-y-1">
-                    {/* 채널별 설정 표시 */}
-                    {channel.channelType === 'EMAIL' && (
-                      <p>발신자: {String(channel.config.from || '-')}</p>
-                    )}
-                    {channel.channelType === 'SLACK' && (
-                      <p>
-                        Webhook URL:{' '}
-                        {typeof channel.config.webhookUrl === 'string'
-                          ? `${channel.config.webhookUrl.substring(0, 30)}...`
-                          : '-'}
-                      </p>
-                    )}
-                    {channel.channelType === 'TELEGRAM' && (
-                      <p>Chat ID: {String(channel.config.chatId || '-')}</p>
-                    )}
+          {!channelsLoaded ? (
+            <div className="text-kwatch-text-muted">로딩 중...</div>
+          ) : alertChannels.length === 0 ? (
+            <div className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6">
+              <p className="text-kwatch-text-muted">
+                설정된 알림 채널이 없습니다. 환경변수(ALERT_EMAIL_*, ALERT_SLACK_*, ALERT_TELEGRAM_*)를 설정한 후 서버를 재시작하세요.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {alertChannels.map((channel) => (
+                <div
+                  key={channel.id}
+                  className="bg-kwatch-bg-secondary rounded-lg border border-kwatch-bg-tertiary p-6 flex items-start justify-between"
+                >
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-kwatch-text-primary mb-2">
+                      {getChannelTypeLabel(channel.channelType)}
+                    </h3>
+                    <div className="text-sm text-kwatch-text-secondary space-y-1">
+                      {/* 채널별 설정 표시 */}
+                      {channel.channelType === 'EMAIL' && (
+                        <p>발신자: {String(channel.config.from || '-')}</p>
+                      )}
+                      {channel.channelType === 'SLACK' && (
+                        <p>
+                          Webhook URL:{' '}
+                          {typeof channel.config.webhookUrl === 'string'
+                            ? `${channel.config.webhookUrl.substring(0, 30)}...`
+                            : '-'}
+                        </p>
+                      )}
+                      {channel.channelType === 'TELEGRAM' && (
+                        <p>Chat ID: {String(channel.config.chatId || '-')}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={channel.isActive}
+                        onChange={() => handleChannelToggle(channel.id, channel.isActive)}
+                        className="w-5 h-5"
+                      />
+                      <span className="text-sm text-kwatch-text-primary">
+                        {channel.isActive ? '활성' : '비활성'}
+                      </span>
+                    </label>
                   </div>
                 </div>
-                <div className="ml-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={channel.isActive}
-                      onChange={() => handleChannelToggle(channel.id, channel.isActive)}
-                      className="w-5 h-5"
-                    />
-                    <span className="text-sm text-kwatch-text-primary">
-                      {channel.isActive ? '활성' : '비활성'}
-                    </span>
-                  </label>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 섹션 2: 대시보드 설정 */}
       <div className="space-y-4">
@@ -954,7 +955,7 @@ export default function SettingsPage() {
       </div>
 
       {/* 섹션 3: 사용자 관리 (Admin만) */}
-      {currentUser?.role === 'admin' && (
+      {currentUser?.role?.toLowerCase() === 'admin' && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-kwatch-text-primary">
             사용자 관리
@@ -1046,7 +1047,7 @@ export default function SettingsPage() {
       )}
 
       {/* 섹션: 시스템 관리 */}
-      {currentUser?.role === 'admin' && (
+      {currentUser?.role?.toLowerCase() === 'admin' && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-kwatch-text-primary">
             시스템 관리
